@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<package format="3">
+  <name>superdex_ros2</name>
+  <version>0.1.0</version>
+  <description>
+    A ROS 2 interface to Project SuperDex. Publishes simulated robot state
+    (joint states, link frames, simulation clock) and accepts Cartesian
+    commands (target pose, twist), so unmodified ROS 2 tooling can observe and
+    drive a SuperDex simulation.
+  </description>
+
+  <maintainer email="team6@example.com">Team 6</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <!-- The SuperDex engine itself is a pip package, not a rosdep key, so it
+       cannot be declared here. It must be importable by whichever interpreter
+       runs the node; see the README. -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

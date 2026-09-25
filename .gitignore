@@ -29,3 +29,12 @@ SuperDexStudio.ini
 audit_reports/
 default.profraw
 *.egg-info/
+
+# colcon / ROS 2 workspace artifacts (should never appear in the fork, but
+# belt-and-braces in case someone builds in place)
+build/
+install/
+log/
+*.pyc
+__pycache__/
+.venv*/
