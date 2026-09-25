@@ -20,6 +20,11 @@ crawls only `src/` instead of the whole SuperDex tree.
 16-709/project/
 ├── project_superdex/                 <- fork (git)
 │   └── superdex_ros2/                <- this package
+│       ├── superdex_ros2/sim_node.py <- the bridge
+│       ├── tools/bot_to_urdf.py      <- .superdex_bot -> URDF converter
+│       ├── launch/                   <- sim.launch.py, display.launch.py
+│       ├── urdf/  meshes/            <- generated, committed
+│       └── package.xml  setup.py
 └── ros2_ws/                          <- workspace (not under git)
     ├── .venv-ros/
     ├── src/superdex_ros2 -> ../../project_superdex/superdex_ros2
@@ -78,6 +83,13 @@ problem disappears, with no `PYTHONPATH` juggling.
 It also matters for asset lookup: the node finds SuperDex's `assets/` directory
 by walking up from its own file, and the symlink is what makes that walk land in
 the source checkout instead of the install tree.
+
+### Launch files
+
+| File | Brings up |
+|---|---|
+| `sim.launch.py` | The sim node alone. Every node parameter is a launch argument. |
+| `display.launch.py` | Sim node + `robot_state_publisher` + RViz, with `use_sim_time` set on both consumers. Arguments: `arm_mode`, `gui`, `rviz`, `rviz_gl`. |
 
 ### Assets
 
@@ -207,6 +219,172 @@ maps closely onto a real robot's low-level command (position, velocity,
 stiffness, damping per joint), and is the natural backend for a joint-command
 topic. The node does not use it.
 
+## The robot model: converting .superdex_bot to URDF
+
+SuperDex describes robots in its own JSON format and ships no URDF for the
+arm-hand combos. Nearly every stock ROS 2 tool needs one — `robot_state_publisher`
+to compute forward kinematics, RViz's RobotModel display to draw meshes, MoveIt
+to plan at all — so `tools/bot_to_urdf.py` generates it.
+
+The converter is standalone: no ROS, no SuperDex engine, no simulation. Pure
+JSON to XML. Run it once and commit the result.
+
+```bash
+# from the fork root
+python3 superdex_ros2/tools/bot_to_urdf.py \
+  --bot assets/bots/arm_hand_combos/fr3_dg5f_short/right/fr3_dg5f_short_right.superdex_bot \
+  --output-dir superdex_ros2/urdf
+```
+
+Writes `urdf/fr3_dg5f_short_right.urdf` and copies 36 link meshes into
+`meshes/`. Both directories are installed into the package share directory by
+`setup.py`; without that, `package://` URIs do not resolve and RViz reports the
+model as missing rather than broken.
+
+Options: `--mesh-format {glb,dae,stl}` (`glb` copies as-is; the others convert
+via trimesh, which lives in the venv — use `.venv-ros/bin/python` to run the
+converter if you need them), `--mesh-up {y,z}`, `--no-world-link`,
+`--assets-root`, `--package`.
+
+### Format notes
+
+None of this is documented upstream; it was established by reading the shipped
+assets.
+
+- **`links` and `joints` are parallel arrays.** Joint *i* connects
+  `links[links[i]["parentLink"]]` to `links[i]`. The root link has no
+  `parentLink`, and its joint entry is a placeholder.
+- **Limits are 3-vectors indexed by the joint axis.** A joint with
+  `axis = [0,1,0]` carries its limits in component 1. `fr3_joint1` has
+  `axis = [0,0,1]` and `±2.7437` in component 2, which is the correct FR3 value.
+- **`momentOfInertia` is `(ixx, ixy, ixz, iyy, iyz, izz)`** — determined by
+  elimination, since the diagonal-first alternative would give `iyy = 0` for
+  FR3 link 0.
+- **Quaternions are `(x, y, z, w)`**, matching `geometry_msgs`. URDF wants
+  roll-pitch-yaw, so the converter converts.
+- **Joint `type`** is `Revolute`, `Hard` (fixed) or `Free` (a floating root,
+  replaced by the attach joint when the bot is composed into a combo).
+- **No effort or velocity limits exist in the source.** URDF requires both on
+  revolute joints, so the converter supplies placeholders (100 N·m, 2 rad/s).
+  These matter to MoveIt and not to visualization, and they are not
+  manufacturer data.
+- **Combos are composition.** The combo file names a `base` bot plus
+  `modifications` entries, each an `AttachBot` giving a parent link, a child bot
+  and the fixed joint between them. Here the DG5F hand attaches to `fr3_link8`
+  through a 180° rotation about Z.
+
+### Meshes are Y-up
+
+glTF is a Y-up format; URDF link frames here are Z-up. Neither assimp (which
+RViz loads meshes through) nor trimesh rotates on import, so the converter
+emits `rpy="1.5708 0 0"` on every visual origin.
+
+Without it, link *frames* are still correct and only the geometry is rotated —
+so the robot renders as disconnected pieces floating near, but not on, their
+joints. That failure mode is worth recognizing: it looks like a kinematics bug
+and is not one.
+
+Evidence for the convention: `fr3_link0` spans mesh-Y 0 → 0.14 and `fr3_link1`
+spans mesh-Y −0.192 → 0.055, which are those links' Z extents on the real robot.
+Use `--mesh-up z` to disable the correction.
+
+### What is not converted
+
+Collision geometry. SuperDex stores it in a proprietary `.mochi.h5` format,
+unusable by ROS. RViz does not need it; MoveIt does, so planning work will need
+collision meshes generated from the render meshes (convex hulls via trimesh are
+the obvious route).
+
+## Visualizing in RViz
+
+```bash
+cd ../ros2_ws
+.venv-ros/bin/python -m colcon build --symlink-install
+source install/setup.bash
+ros2 launch superdex_ros2 display.launch.py arm_mode:=circle
+```
+
+This brings up the sim node, `robot_state_publisher` and RViz together, with
+`use_sim_time` set on both consumers.
+
+RViz starts from its default configuration, which is a navigation layout — Grid,
+Map, LaserScan, fixed frame `map` — and shows nothing useful. Set it up once:
+
+1. **Fixed Frame** → `world` (not `map`).
+2. **Add** → **RobotModel**, then set its *Description Topic* to
+   `/robot_description`.
+3. **Add** → **TF** to see the frame tree.
+
+Then **File → Save Config As** so the layout persists.
+
+### Two frame trees
+
+Both run at once, deliberately:
+
+```
+world -> sim_fr3_link0, sim_fr3_link1, ...    sim node: flat, straight from the engine
+world -> base -> fr3_link0 -> fr3_link1 ...   robot_state_publisher: kinematic, from the URDF
+```
+
+They share the `world` root and never collide, because the sim node prefixes its
+frames with `sim_`. The sim node publishes what the engine reports; RViz draws
+what the URDF computes from `/joint_states`. Differencing a pair therefore tests
+the URDF conversion, the DOF-to-joint-name mapping and the message path at once:
+
+```bash
+ros2 run tf2_ros tf2_echo sim_fr3_link8 fr3_link8 --ros-args -p use_sim_time:=true
+```
+
+Measured: identity to the tool's printed precision (three decimals) throughout a
+full `arm_mode:=circle` sweep. An independent forward-kinematics walk over the
+generated URDF at the bot's default pose agrees with engine-reported link
+positions to within 0.07 mm, which is the rounding in the comparison rather than
+converter error.
+
+### Graphics on Pop!_OS
+
+RViz renders through Ogre, which has no Wayland backend, so Qt must go via
+XWayland: `QT_QPA_PLATFORM=xcb` is required or no window appears. On hybrid
+NVIDIA graphics the GL context may also fail, in which case software
+rasterization works but is slow with 38 meshes.
+
+The launch file handles this per-node, so `LIBGL_ALWAYS_SOFTWARE` does not leak
+into the sim node and force the SuperDex debugger onto CPU rendering too.
+`rviz_gl:=software` is the default because it always works; try hardware first
+and keep it if the window appears:
+
+```bash
+ros2 launch superdex_ros2 display.launch.py rviz_gl:=hardware
+```
+
+Standalone, the equivalent is:
+
+```bash
+QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 \
+  ros2 run rviz2 rviz2 --ros-args -p use_sim_time:=true
+```
+
+### If the robot does not appear
+
+In order of likelihood:
+
+- **Default RViz config.** No RobotModel display, fixed frame `map`. See above.
+- **`urdf/` and `meshes/` not installed.** `ls install/superdex_ros2/share/superdex_ros2/`
+  should list both. If not, `setup.py` is missing its `data_files` entries, or
+  setuptools cached an old file list — `rm -rf build install log` and rebuild.
+- **"Two or more unconnected trees."** `world -> base` is a fixed joint, so it
+  is published once on `/tf_static`. If the TF buffer was cleared — see the next
+  item — restarting the *consumer* re-subscribes and transient-local QoS
+  redelivers it.
+- **"Detected jump back in time."** Sim time restarts at zero on every run, so
+  relaunching the sim node moves the clock backwards and TF clears its buffer.
+  Harmless in itself, but two sim nodes running at once will do it repeatedly:
+  `pkill -f sim_node` before relaunching.
+- **Meshes render as nothing.** RViz's assimp build may not read glTF.
+  Regenerate with `--mesh-format dae`.
+- **Pieces float near their joints.** The Y-up correction is missing — see
+  above.
+
 ## Topics
 
 | Topic | Type | Direction | Rate |
@@ -292,6 +470,12 @@ place rather than moving sideways. Lateral motion is `J` and `L` (shifted).
   frame names.
 - Quaternion storage order is `(x, y, z, w)`, the same as `geometry_msgs`, so
   no reordering is needed.
+- The generated URDF and its meshes are committed, so a fresh clone does not
+  need the converter — but regenerating requires a SuperDex asset tree, and
+  `setup.py` must install `urdf/` and `meshes/` for `package://` to resolve.
+- `robot_state_publisher` subscribes to `/joint_states`, so the URDF's joint
+  names must match what the sim node publishes exactly. They do, because both
+  derive from the same `.superdex_bot` joint list.
 - The node runs single-threaded: `rclpy.spin_once(timeout_sec=0.0)` once per
   step, inside the sim loop. Commands arrive at teleop rates against a 200 Hz
   loop and queues are depth 1, so nothing accumulates, and no executor thread
@@ -314,6 +498,20 @@ scheduling floor — `time.sleep()` granularity on a non-realtime kernel.
 
 Headless and unpaced, the simulation runs at roughly 5.5x real time
 (~0.9 ms/step), leaving about 4 ms per step of budget at 200 Hz.
+
+### Correctness
+
+| Check | Result |
+|---|---|
+| Link and joint counts vs. the engine | 38 links, 27 revolute joints — exact |
+| Joint names vs. `/joint_states` | exact, including the actor/bot DOF index offset |
+| URDF forward kinematics vs. engine link transforms, default pose | ≤ 0.07 mm, limited by the precision of the reference values |
+| `sim_fr3_link8` vs. `fr3_link8` during an `arm_mode:=circle` sweep | identity to `tf2_echo`'s three printed decimals |
+
+The last row is the end-to-end check: the engine's own link transform against
+one computed independently by `robot_state_publisher` from the generated URDF
+and the published joint states. A logged residual with a stated bound is still
+to do — `tf2_echo` rounds too early to quote a number from.
 
 ## License
 

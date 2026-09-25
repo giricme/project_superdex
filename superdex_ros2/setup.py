@@ -12,6 +12,10 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/launch", glob("launch/*.launch.py")),
+        # urdf/ and meshes/ must be installed for package:// URIs to resolve;
+        # without them RViz reports the model as missing rather than broken.
+        ("share/" + package_name + "/urdf", glob("urdf/*.urdf")),
+        ("share/" + package_name + "/meshes", glob("meshes/*")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

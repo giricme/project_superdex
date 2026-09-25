@@ -1,0 +1,745 @@
+<?xml version="1.0"?>
+<robot name="fr3_dg5f_short_right">
+  <link name="world" />
+  <link name="base" />
+  <link name="fr3_link0">
+    <inertial>
+      <origin xyz="-0.0172000005841 0.000399999989895 0.074500001967" rpy="0 0 0" />
+      <mass value="2.39660000801" />
+      <inertia ixx="0.00899999961257" ixy="0" ixz="0.00200000009499" iyy="0.0115000000224" iyz="0" izz="0.00850000046194" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link0.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link1">
+    <inertial>
+      <origin xyz="4.12799977312e-07 -0.0181251317263 -0.0386035963893" rpy="0 0 0" />
+      <mass value="2.92746543884" />
+      <inertia ixx="0.0239273160696" ixy="1.33179028126e-05" ixz="-0.000114047747047" iyy="0.0224821604788" iyz="-0.00199503195472" izz="0.00635009817779" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link2">
+    <inertial>
+      <origin xyz="0.00318288640119 -0.0743221640587 0.0088146077469" rpy="0 0 0" />
+      <mass value="2.93553686142" />
+      <inertia ixx="0.0419389456511" ixy="0.000202573311981" ixz="0.00407778425142" iyy="0.0251451469958" iyz="-0.00422521540895" izz="0.0617021434009" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link3">
+    <inertial>
+      <origin xyz="0.0407015681267 -0.00482005625963 -0.0289730820805" rpy="0 0 0" />
+      <mass value="2.24490141869" />
+      <inertia ixx="0.0241014249623" ixy="0.00240469444543" ixz="-0.00285626924597" iyy="0.019740531221" iyz="-0.00210421252996" izz="0.0190444942564" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link4">
+    <inertial>
+      <origin xyz="-0.0459100939333 0.0630492940545 -0.00851878616959" rpy="0 0 0" />
+      <mass value="2.61559534073" />
+      <inertia ixx="0.0345299802721" ixy="0.0132255218923" ixz="0.0101514291018" iyy="0.0288816206157" iyz="-0.000976283336058" izz="0.0412547104061" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link5">
+    <inertial>
+      <origin xyz="-0.00160396040883 0.0292536262423 -0.0972965955734" rpy="0 0 0" />
+      <mass value="2.32712078094" />
+      <inertia ixx="0.051610276103" ixy="-0.0057151732035" ixz="-0.00356731656939" iyy="0.0478772968054" iyz="0.0106739848852" izz="0.0164236240089" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link5.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link6">
+    <inertial>
+      <origin xyz="0.0597131215036 -0.0410294644535 -0.010169272311" rpy="0 0 0" />
+      <mass value="1.81703782082" />
+      <inertia ixx="0.00541233317927" ixy="0.00619345624" ixz="0.00142192887142" iyy="0.014058329165" iyz="-0.00131407531444" izz="0.0160808172077" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link6.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link7">
+    <inertial>
+      <origin xyz="0.00452258158475 0.00862619187683 -0.0161633249372" rpy="0 0 0" />
+      <mass value="0.627143263817" />
+      <inertia ixx="0.000210923884879" ixy="-2.43329905061e-05" ixz="4.56448033219e-05" iyy="0.000177185676876" iyz="8.74406978255e-05" izz="5.9931902797e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/fr3_link7.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="fr3_link8" />
+  <link name="dg5f_link_mount">
+    <inertial>
+      <origin xyz="0.000650229980238 -9.99999993923e-09 0.00450510019436" rpy="0 0 0" />
+      <mass value="0.0816520005465" />
+      <inertia ixx="3.88560001738e-05" ixy="0" ixz="-3.94099998857e-07" iyy="4.13169982494e-05" iyz="0" izz="7.78190005803e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_mount.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_base">
+    <inertial>
+      <origin xyz="-0.0019296000246 0.000838709995151 0.0120789995417" rpy="0 0 0" />
+      <mass value="0.240960001945" />
+      <inertia ixx="8.94030017662e-05" ixy="8.98940015759e-06" ixz="6.27540021014e-06" iyy="8.95319972187e-05" iyz="-4.44370016339e-06" izz="0.000148039995111" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_base.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_palm">
+    <inertial>
+      <origin xyz="-0.00895769987255 0.00095577002503 0.0413249991834" rpy="0 0 0" />
+      <mass value="0.34999999404" />
+      <inertia ixx="0.000526560004801" ixy="2.51300002674e-06" ixz="-2.23040005949e-05" iyy="0.000416539987782" iyz="-4.89560006827e-05" izz="0.000457829999505" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_palm.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_1_1">
+    <inertial>
+      <origin xyz="0.0214729998261 3.11999997393e-06 0.00281460001133" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="4.27070017395e-06" ixy="2.39999997653e-09" ixz="2.90549996862e-06" iyy="1.37180004458e-05" iyz="-1.40000000481e-09" izz="1.21610000861e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_1_1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_1_2">
+    <inertial>
+      <origin xyz="0.000556330021936 0.0154999997467 0.000556330021936" rpy="0 0 0" />
+      <mass value="0.0250000003725" />
+      <inertia ixx="1.99350006369e-06" ixy="-1.57700000614e-07" ixz="3.10000003445e-09" iyy="1.4590000319e-06" iyz="1.57700000614e-07" izz="1.99350006369e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_1_2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_1_3">
+    <inertial>
+      <origin xyz="2.30099994951e-05 0.0148419998586 4.73999989481e-06" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="5.97940015723e-06" ixy="-3.60099988939e-07" ixz="-1.40000000481e-09" iyy="2.45799992626e-06" iyz="-2.39999997653e-09" izz="6.41809992885e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_1_3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_1_4">
+    <inertial>
+      <origin xyz="-0.000204819996725 0.0187950003892 -0.000365390005754" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="9.49150035012e-06" ixy="-1.51600005438e-07" ixz="3.50000006755e-09" iyy="2.93910011351e-06" iyz="3.78099997533e-07" izz="9.81939956546e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_1_4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_1_tip">
+    <inertial>
+      <origin xyz="5.49999981558e-07 0.00715699978173 0.00380629999563" rpy="0 0 0" />
+      <mass value="0.00499999988824" />
+      <inertia ixx="1.98899996917e-07" ixy="0" ixz="0" iyy="2.57000010606e-07" iyz="1.34000002205e-08" izz="3.24500007309e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_1_tip.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_2_1">
+    <inertial>
+      <origin xyz="0.00106100004632 0.000244169990765 0.0234990008175" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.55380017633e-06" ixy="3.93000014753e-08" ixz="-1.15069997264e-06" iyy="9.53050039243e-06" iyz="7.61000009675e-08" izz="7.08769994162e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_2_1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_2_2">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_2_2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_2_3">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_2_3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_2_4">
+    <inertial>
+      <origin xyz="-0.000708159990609 0.000430359999882 0.0178420003504" rpy="0 0 0" />
+      <mass value="0.0250000003725" />
+      <inertia ixx="2.85920009446e-06" ixy="-5.90000004408e-09" ixz="2.10300001413e-07" iyy="2.39070004682e-06" iyz="1.82899995593e-07" izz="1.65920005202e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_2_4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_2_tip">
+    <inertial>
+      <origin xyz="0.00380628998391 5.49999981558e-07 0.00715699000284" rpy="0 0 0" />
+      <mass value="0.00499999988824" />
+      <inertia ixx="3.24399991314e-07" ixy="0" ixz="1.34000002205e-08" iyy="1.98999998702e-07" iyz="0" izz="2.57000010606e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_2_tip.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_3_1">
+    <inertial>
+      <origin xyz="0.00125580001622 -0.000177030000486 0.0233740005642" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.23300002189e-06" ixy="1.13200002261e-07" ixz="-1.15889997687e-06" iyy="9.33310002438e-06" iyz="3.53999993763e-08" izz="6.78169999446e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_3_1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_3_2">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_3_2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_3_3">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_3_3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_3_4">
+    <inertial>
+      <origin xyz="-0.000708159990609 0.000430359999882 0.0178420003504" rpy="0 0 0" />
+      <mass value="0.0250000003725" />
+      <inertia ixx="2.85920009446e-06" ixy="-5.90000004408e-09" ixz="2.10300001413e-07" iyy="2.39070004682e-06" iyz="1.82899995593e-07" izz="1.65920005202e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_3_4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_3_tip">
+    <inertial>
+      <origin xyz="0.00380628998391 5.49999981558e-07 0.00715699000284" rpy="0 0 0" />
+      <mass value="0.00499999988824" />
+      <inertia ixx="3.24399991314e-07" ixy="0" ixz="1.34000002205e-08" iyy="1.98999998702e-07" iyz="0" izz="2.57000010606e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_3_tip.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_4_1">
+    <inertial>
+      <origin xyz="6.05700006417e-05 -0.000585659989156 0.0234990008175" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.55409985484e-06" ixy="1.8679999414e-07" ixz="-1.15080001706e-06" iyy="9.53060043685e-06" iyz="-5.29999999443e-09" izz="7.08790003046e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_4_1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_4_2">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_4_2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_4_3">
+    <inertial>
+      <origin xyz="-4.73999989481e-06 2.30099994951e-05 0.0239579994231" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_4_3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_4_4">
+    <inertial>
+      <origin xyz="-0.000708159990609 0.000430359999882 0.0178420003504" rpy="0 0 0" />
+      <mass value="0.0250000003725" />
+      <inertia ixx="2.85920009446e-06" ixy="-5.90000004408e-09" ixz="2.10300001413e-07" iyy="2.39070004682e-06" iyz="1.82899995593e-07" izz="1.65920005202e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_4_4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_4_tip">
+    <inertial>
+      <origin xyz="0.00380628998391 5.49999981558e-07 0.00715699000284" rpy="0 0 0" />
+      <mass value="0.00499999988824" />
+      <inertia ixx="3.24399991314e-07" ixy="0" ixz="1.34000002205e-08" iyy="1.98999998702e-07" iyz="0" izz="2.57000010606e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_4_tip.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_5_1">
+    <inertial>
+      <origin xyz="-0.00433014007285 -0.0250157006085 0.0140244001523" rpy="0 0 0" />
+      <mass value="0.054999999702" />
+      <inertia ixx="2.36207997659e-05" ixy="2.93900001225e-07" ixz="2.26320003094e-06" iyy="2.36539999605e-05" iyz="4.47869979325e-06" izz="1.12977004392e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_5_1.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_5_2">
+    <inertial>
+      <origin xyz="-0.000537629995961 0.000537629995961 0.0155001003295" rpy="0 0 0" />
+      <mass value="0.0250000003725" />
+      <inertia ixx="1.99379996957e-06" ixy="-8.19999979029e-09" ixz="-1.59500004315e-07" iyy="1.99379996957e-06" iyz="-1.59500004315e-07" izz="1.45980004618e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_5_2.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_5_3">
+    <inertial>
+      <origin xyz="4.73999989481e-06 2.30099994951e-05 0.0148419002071" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="6.41809992885e-06" ixy="-1.40000000481e-09" ixz="-2.39999997653e-09" iyy="5.97940015723e-06" iyz="-3.60099988939e-07" izz="2.45799992626e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_5_3.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_5_4">
+    <inertial>
+      <origin xyz="-0.000365390005754 -0.000204819996725 0.0187947005033" rpy="0 0 0" />
+      <mass value="0.0450000017881" />
+      <inertia ixx="9.81939956546e-06" ixy="3.50000006755e-09" ixz="3.78099997533e-07" iyy="9.49150035012e-06" iyz="-1.51600005438e-07" izz="2.93910011351e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_5_4.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="dg5f_link_5_tip">
+    <inertial>
+      <origin xyz="0.00380628998391 5.49999981558e-07 0.00715699000284" rpy="0 0 0" />
+      <mass value="0.00499999988824" />
+      <inertia ixx="3.24399991314e-07" ixy="0" ixz="1.34000002205e-08" iyy="1.98999998702e-07" iyz="0" izz="2.57000010606e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.57079632679 0 0" />
+      <geometry>
+        <mesh filename="package://superdex_ros2/meshes/dg5f_link_5_tip.glb" />
+      </geometry>
+    </visual>
+  </link>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world" />
+    <child link="base" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="fr3_base_joint" type="fixed">
+    <parent link="base" />
+    <child link="fr3_link0" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="fr3_joint1" type="revolute">
+    <parent link="fr3_link0" />
+    <child link="fr3_link1" />
+    <origin xyz="0 0 0.333000004292" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.74370002747" upper="2.74370002747" effort="100" velocity="2" />
+    <dynamics damping="1.17708420753" friction="1.07159411907" />
+  </joint>
+  <joint name="fr3_joint2" type="revolute">
+    <parent link="fr3_link1" />
+    <child link="fr3_link2" />
+    <origin xyz="0 0 0" rpy="-1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.78369998932" upper="1.78369998932" effort="100" velocity="2" />
+    <dynamics damping="1.17708420753" friction="1.29715716839" />
+  </joint>
+  <joint name="fr3_joint3" type="revolute">
+    <parent link="fr3_link2" />
+    <child link="fr3_link3" />
+    <origin xyz="0 -0.316000014544 0" rpy="1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.90070009232" upper="2.90070009232" effort="100" velocity="2" />
+    <dynamics damping="1.17708420753" friction="1.2087597847" />
+  </joint>
+  <joint name="fr3_joint4" type="revolute">
+    <parent link="fr3_link3" />
+    <child link="fr3_link4" />
+    <origin xyz="0.0825000032783 0 0" rpy="1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0420999527" upper="-0.151800006628" effort="100" velocity="2" />
+    <dynamics damping="1.17708420753" friction="0.722625136375" />
+  </joint>
+  <joint name="fr3_joint5" type="revolute">
+    <parent link="fr3_link4" />
+    <child link="fr3_link5" />
+    <origin xyz="-0.0825000032783 0.384000003338 0" rpy="-1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.80649995804" upper="2.80649995804" effort="100" velocity="2" />
+    <dynamics damping="0.544590294361" friction="0.86576884985" />
+  </joint>
+  <joint name="fr3_joint6" type="revolute">
+    <parent link="fr3_link5" />
+    <child link="fr3_link6" />
+    <origin xyz="0 0 0" rpy="1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.544499993324" upper="4.51690006256" effort="100" velocity="2" />
+    <dynamics damping="0.544590294361" friction="0.479059696198" />
+  </joint>
+  <joint name="fr3_joint7" type="revolute">
+    <parent link="fr3_link6" />
+    <child link="fr3_link7" />
+    <origin xyz="0.0879999995232 0 0" rpy="1.57080003572 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.01589989662" upper="3.01589989662" effort="100" velocity="2" />
+    <dynamics damping="0.544590294361" friction="0.834475696087" />
+  </joint>
+  <joint name="fr3_joint8" type="fixed">
+    <parent link="fr3_link7" />
+    <child link="fr3_link8" />
+    <origin xyz="0 0 0.107000000775" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_to_fr3" type="fixed">
+    <parent link="fr3_link8" />
+    <child link="dg5f_link_mount" />
+    <origin xyz="0 0 0" rpy="0 -0 -3.14159256617" />
+  </joint>
+  <joint name="dg5f_joint_base" type="fixed">
+    <parent link="dg5f_link_mount" />
+    <child link="dg5f_link_base" />
+    <origin xyz="0 0 0.00449999980628" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_palm" type="fixed">
+    <parent link="dg5f_link_base" />
+    <child link="dg5f_link_palm" />
+    <origin xyz="0 0 0.0219999998808" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_1_1" type="revolute">
+    <parent link="dg5f_link_palm" />
+    <child link="dg5f_link_1_1" />
+    <origin xyz="-0.0162000004202 0.0189999993891 0.0127999996766" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.383971989155" upper="0.890118002892" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_1_2" type="revolute">
+    <parent link="dg5f_link_1_1" />
+    <child link="dg5f_link_1_2" />
+    <origin xyz="0.0419499985874 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159011841" upper="0" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_1_3" type="revolute">
+    <parent link="dg5f_link_1_2" />
+    <child link="dg5f_link_1_3" />
+    <origin xyz="0 0.0309999994934 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_1_4" type="revolute">
+    <parent link="dg5f_link_1_3" />
+    <child link="dg5f_link_1_4" />
+    <origin xyz="0 0.0388000011444 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_1_tip" type="fixed">
+    <parent link="dg5f_link_1_4" />
+    <child link="dg5f_link_1_tip" />
+    <origin xyz="0 0.0362999998033 0" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_2_1" type="revolute">
+    <parent link="dg5f_link_palm" />
+    <child link="dg5f_link_2_1" />
+    <origin xyz="-0.00710000004619 0.0270000007004 0.0661000013351" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.418879002333" upper="0.0500000007451" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_2_2" type="revolute">
+    <parent link="dg5f_link_2_1" />
+    <child link="dg5f_link_2_2" />
+    <origin xyz="0.017650000751 0 0.0264999996871" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="2.00712990761" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_2_3" type="revolute">
+    <parent link="dg5f_link_2_2" />
+    <child link="dg5f_link_2_3" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_2_4" type="revolute">
+    <parent link="dg5f_link_2_3" />
+    <child link="dg5f_link_2_4" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_2_tip" type="fixed">
+    <parent link="dg5f_link_2_4" />
+    <child link="dg5f_link_2_tip" />
+    <origin xyz="0 0 0.0254999995232" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_3_1" type="revolute">
+    <parent link="dg5f_link_palm" />
+    <child link="dg5f_link_3_1" />
+    <origin xyz="-0.00710000004619 0.00249999994412 0.0701000019908" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.61086499691" upper="0.61086499691" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_3_2" type="revolute">
+    <parent link="dg5f_link_3_1" />
+    <child link="dg5f_link_3_2" />
+    <origin xyz="0.017650000751 0 0.0264999996871" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.95476996899" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_3_3" type="revolute">
+    <parent link="dg5f_link_3_2" />
+    <child link="dg5f_link_3_3" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_3_4" type="revolute">
+    <parent link="dg5f_link_3_3" />
+    <child link="dg5f_link_3_4" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_3_tip" type="fixed">
+    <parent link="dg5f_link_3_4" />
+    <child link="dg5f_link_3_tip" />
+    <origin xyz="0 0 0.0254999995232" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_4_1" type="revolute">
+    <parent link="dg5f_link_palm" />
+    <child link="dg5f_link_4_1" />
+    <origin xyz="-0.00710000004619 -0.0219999998808 0.0621000006795" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.0500000007451" upper="0.418879002333" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_4_2" type="revolute">
+    <parent link="dg5f_link_4_1" />
+    <child link="dg5f_link_4_2" />
+    <origin xyz="0.017650000751 0 0.0264999996871" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.90241003036" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_4_3" type="revolute">
+    <parent link="dg5f_link_4_2" />
+    <child link="dg5f_link_4_3" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_4_4" type="revolute">
+    <parent link="dg5f_link_4_3" />
+    <child link="dg5f_link_4_4" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_4_tip" type="fixed">
+    <parent link="dg5f_link_4_4" />
+    <child link="dg5f_link_4_tip" />
+    <origin xyz="0 0 0.0254999995232" rpy="0 0 0" />
+  </joint>
+  <joint name="dg5f_joint_5_1" type="revolute">
+    <parent link="dg5f_link_palm" />
+    <child link="dg5f_link_5_1" />
+    <origin xyz="0.0103000001982 -0.0195000004023 0.018200000748" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.0174529999495" upper="1.04719996452" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_5_2" type="revolute">
+    <parent link="dg5f_link_5_1" />
+    <child link="dg5f_link_5_2" />
+    <origin xyz="0 -0.0280000008643 0.0381000004709" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.0500000007451" upper="0.61086499691" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_5_3" type="revolute">
+    <parent link="dg5f_link_5_2" />
+    <child link="dg5f_link_5_3" />
+    <origin xyz="0 0 0.0309999994934" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_5_4" type="revolute">
+    <parent link="dg5f_link_5_3" />
+    <child link="dg5f_link_5_4" />
+    <origin xyz="0 0 0.0388000011444" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.57079994678" effort="100" velocity="2" />
+    <dynamics damping="0.0309480000287" friction="0.0083440002054" />
+  </joint>
+  <joint name="dg5f_joint_5_tip" type="fixed">
+    <parent link="dg5f_link_5_4" />
+    <child link="dg5f_link_5_tip" />
+    <origin xyz="0 0 0.0362999998033" rpy="0 0 0" />
+  </joint>
+</robot>
