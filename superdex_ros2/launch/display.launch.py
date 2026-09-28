@@ -82,6 +82,10 @@ def generate_launch_description() -> LaunchDescription:
             parameters=[
                 {"robot_description": robot_description},
                 {"use_sim_time": True},
+                # Default is 20 Hz, which is visibly coarser than the sim node's
+                # own frames and makes the two trees disagree during motion for
+                # reasons that have nothing to do with the URDF.
+                {"publish_frequency": 200.0},
             ],
         ),
 

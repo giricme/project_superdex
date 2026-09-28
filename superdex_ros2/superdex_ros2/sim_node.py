@@ -744,9 +744,14 @@ def main() -> None:
             f"overruns {n_overruns} ({100.0 * n_overruns / n_steps:.1f}%)"
         )
 
-    # Tear down: ROS first, then destroy the bot and shut the engine down cleanly.
-    node.destroy_node()
-    rclpy.shutdown()
+    # Tear down: ROS first, then destroy the bot and shut the engine down
+    # cleanly. Launch sends SIGINT on shutdown, which tears the rclpy context
+    # down before this runs -- so both calls are guarded. Without that, a normal
+    # launch shutdown ends with `rcl_shutdown already called` and the process is
+    # reported as having died, which looks like a failure and is not one.
+    if rclpy.ok():
+        node.destroy_node()
+        rclpy.shutdown()
     sdr.destroy_bot(scene, bot)
     sdp.shutdown()
     print("Simulation complete.")

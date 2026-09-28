@@ -27,6 +27,7 @@ setup(
     entry_points={
         "console_scripts": [
             "sim_node = superdex_ros2.sim_node:main",
+            "trial_runner = superdex_ros2.trial_runner:main",
         ],
     },
 )

@@ -21,7 +21,9 @@ crawls only `src/` instead of the whole SuperDex tree.
 ├── project_superdex/                 <- fork (git)
 │   └── superdex_ros2/                <- this package
 │       ├── superdex_ros2/sim_node.py <- the bridge
+│       ├── superdex_ros2/trial_runner.py  <- waypoint trials
 │       ├── tools/bot_to_urdf.py      <- .superdex_bot -> URDF converter
+│       ├── tools/analyze_trials.py   <- offline metrics from a recorded session
 │       ├── launch/                   <- sim.launch.py, display.launch.py
 │       ├── urdf/  meshes/            <- generated, committed
 │       └── package.xml  setup.py
@@ -90,6 +92,7 @@ the source checkout instead of the install tree.
 |---|---|
 | `sim.launch.py` | The sim node alone. Every node parameter is a launch argument. |
 | `display.launch.py` | Sim node + `robot_state_publisher` + RViz, with `use_sim_time` set on both consumers. Arguments: `arm_mode`, `gui`, `rviz`, `rviz_gl`. |
+| `trials.launch.py` | A headless waypoint-trial session: sim node in `pose` mode, `robot_state_publisher`, a bag recorder and the trial runner. Shuts everything down when the trials finish. Arguments: `seed`, `n_targets`, `tolerance`, `tf_rate`, `rsp_rate`, `output_dir`. |
 
 ### Assets
 
@@ -335,11 +338,33 @@ the URDF conversion, the DOF-to-joint-name mapping and the message path at once:
 ros2 run tf2_ros tf2_echo sim_fr3_link8 fr3_link8 --ros-args -p use_sim_time:=true
 ```
 
-Measured: identity to the tool's printed precision (three decimals) throughout a
-full `arm_mode:=circle` sweep. An independent forward-kinematics walk over the
-generated URDF at the bot's default pose agrees with engine-reported link
-positions to within 0.07 mm, which is the rounding in the comparison rather than
-converter error.
+Measured over 20 waypoint trials: **0.21 um** maximum position residual and
+**0.02 mdeg** maximum rotation residual. That is the float32 floor — the engine
+computes in single precision, whose relative epsilon at the ~1 m scale of these
+transforms is about 0.12 um — so the two computations agree exactly and what is
+left is rounding.
+
+### The 20 Hz trap
+
+Reaching that number required one non-obvious setting. `robot_state_publisher`
+defaults to `publish_frequency: 20.0`, so out of the box it is the *coarser* of
+the two trees by a factor of ten. tf2 interpolates across whichever tree is
+coarser, and a 50 ms gap on a moving arm is worth hundreds of micrometres:
+
+| `robot_state_publisher` | sim node `/tf` | Max residual |
+|---|---|---|
+| 20 Hz (default) | 50 Hz | 610 um |
+| 20 Hz (default) | 200 Hz | 605 um |
+| 200 Hz | 200 Hz | **0.21 um** |
+
+The middle row is the instructive one: raising the *simulator's* rate changed
+nothing, because it was never the limiter. Both launch files now set
+`publish_frequency` to 200 Hz.
+
+Worth knowing beyond this package. Anyone cross-validating a simulator against
+`robot_state_publisher` will measure sub-millimetre "disagreement" in the default
+configuration, see a plausible number, and attribute it to their model. It is a
+sampling artifact with a one-line fix.
 
 ### Graphics on Pop!_OS
 
@@ -384,6 +409,40 @@ In order of likelihood:
   Regenerate with `--mesh-format dae`.
 - **Pieces float near their joints.** The Y-up correction is missing — see
   above.
+
+## Measuring: trials and offline analysis
+
+Two pieces, deliberately separated. `trial_runner` publishes waypoints and
+records *when* each trial started, settled and ended; `tools/analyze_trials.py`
+reads that index plus a rosbag of the same session and derives every number.
+Nothing is measured live, so a metric can be redefined without re-running the
+simulation.
+
+```bash
+ros2 launch superdex_ros2 trials.launch.py \
+    seed:=0 n_targets:=20 tolerance:=0.010 tf_rate:=200.0 rsp_rate:=200.0
+
+.venv-ros/bin/python tools/analyze_trials.py trials/<timestamp>
+```
+
+Output lands in `trials/<timestamp>/`: `trials.json` (the index),
+`bag/`, `metrics_trials.csv` (one row per trial), `metrics_residual.csv` (the
+forward-kinematics residual time series) and `summary.txt`.
+
+Notes on the setup:
+
+- `tf_rate` and `rsp_rate` both default to 200 Hz here, unlike the sim node's own
+  50 Hz default, because the forward-kinematics residual is only meaningful when
+  neither tree is being interpolated. See [the 20 Hz trap](#the-20-hz-trap).
+- `output_dir` is timestamped. `ros2 bag record -o` refuses to write into an
+  existing directory and dies on the spot while the rest of the session carries
+  on, which leaves a `trials.json` paired to the *previous* run's bag.
+- Targets are sampled from a box known to be reachable: there is no IK available
+  to verify reachability up front, so an unconstrained sampler would make the
+  success rate a property of the sampler.
+- Settling means "inside tolerance continuously for a dwell period", not "inside
+  tolerance once" — the controller is a spring-damper and crosses the band on
+  its way to overshooting it.
 
 ## Topics
 
@@ -483,8 +542,15 @@ place rather than moving sideways. Lateral motion is `J` and `L` (shifted).
 
 ## Measured performance
 
-30 s runs, 6001 steps, laptop with default power management, real-time factor
-1.00 throughout:
+All numbers from a laptop with default power management, real-time factor 1.00
+throughout. Nothing here is estimated.
+
+### Throughput and timing
+
+Headless and unpaced, the simulation runs at roughly **5.5x real time**
+(~0.9 ms/step), leaving about 4 ms per step of budget at 200 Hz.
+
+Paced, over 30 s runs of 6001 steps:
 
 | Configuration | Steps missing their deadline |
 |---|---|
@@ -496,8 +562,21 @@ The spread is within run-to-run noise, so neither ROS publishing nor arm motion
 measurably affects deadline adherence at 200 Hz. The residual is the host's
 scheduling floor — `time.sleep()` granularity on a non-realtime kernel.
 
-Headless and unpaced, the simulation runs at roughly 5.5x real time
-(~0.9 ms/step), leaving about 4 ms per step of budget at 200 Hz.
+Recording changes this: a `ros2 bag record` over seven topics costs about 2% of
+deadlines on its own. The measurement configuration is more expensive than the
+configuration being measured.
+
+### Bridge
+
+| Metric | Result |
+|---|---|
+| `/joint_states` interarrival | 5.000 ms, sd 0.000, over 7095 messages — no drops, no jitter |
+| Command latency, `/target_pose` to `/ee_target` | 6.6 ± 2.3 ms (range 5–10) |
+| Command latency, fully instrumented | 9.8 ± 2.5 ms (range 5–15) |
+
+Latency is one to two simulation steps. The two rows bracket it: the first is
+the bridge's own cost, the second is with `/tf` at 200 Hz from both trees and a
+recorder running, which is the worst case rather than the normal one.
 
 ### Correctness
 
@@ -506,12 +585,59 @@ Headless and unpaced, the simulation runs at roughly 5.5x real time
 | Link and joint counts vs. the engine | 38 links, 27 revolute joints — exact |
 | Joint names vs. `/joint_states` | exact, including the actor/bot DOF index offset |
 | URDF forward kinematics vs. engine link transforms, default pose | ≤ 0.07 mm, limited by the precision of the reference values |
-| `sim_fr3_link8` vs. `fr3_link8` during an `arm_mode:=circle` sweep | identity to `tf2_echo`'s three printed decimals |
+| `sim_fr3_link8` vs. `fr3_link8`, 20 trials, both trees at 200 Hz | **0.21 um** position, **0.02 mdeg** rotation (max) |
 
 The last row is the end-to-end check: the engine's own link transform against
 one computed independently by `robot_state_publisher` from the generated URDF
-and the published joint states. A logged residual with a stated bound is still
-to do — `tf2_echo` rounds too early to quote a number from.
+and the published joint states. Agreement at the float32 floor means the URDF
+conversion, the DOF-to-joint-name mapping and the message path are all exact.
+See [the 20 Hz trap](#the-20-hz-trap) for why the default configuration reports
+600 um instead.
+
+### Task: Cartesian waypoint reaching
+
+20 targets sampled from a reachable box, orientation pinned hand-down, driven
+through `/target_pose` and tracked by the shipped Cartesian impedance
+controller. Reproduced across four runs:
+
+| Metric | Result |
+|---|---|
+| Final position error | 4.2 ± 1.3 mm (range 2.2–6.6) |
+| Final orientation error | 1.9 ± 0.5 deg |
+| Settle time | 0.75 ± 0.24 s (range 0.24–1.21) |
+| Path deviation from the straight line | 16.8 ± 6.1 mm (max 30.4) |
+| Settled within 10 mm | 20/20 |
+
+**The error floor is the finding, not the success rate.** An earlier run at a
+5 mm tolerance reported 15/20 — but every trial in that run, pass and fail
+alike, landed between 2.3 mm and 5.7 mm. The threshold sat inside the error
+distribution, so the "success rate" measured where the line was drawn rather
+than whether the arm reached. One trial flipped between settling and timing out
+across two runs of the same seed with 4.9 mm error both times. The tolerance was
+raised to 10 mm *after* measuring the floor, and the analysis script now flags
+this condition automatically.
+
+Position error correlates with travel distance (r = +0.37) but not with
+orientation error (r = +0.10), which rules out the arm trading position against
+the pinned orientation and points instead at the controller's 5 cm error clamp
+throttling the approach.
+
+Path deviation is worth keeping as a baseline: this is Cartesian impedance
+control with no path planning, so 17 mm of wander from the direct route is what
+a planner would later be compared against.
+
+### Reproducing
+
+```bash
+ros2 launch superdex_ros2 trials.launch.py \
+    seed:=0 n_targets:=20 tolerance:=0.010 tf_rate:=200.0 rsp_rate:=200.0
+
+.venv-ros/bin/python tools/analyze_trials.py trials/<timestamp>
+```
+
+The trial runner records only *when* each trial happened; every metric is
+computed offline from the bag, so a definition can be changed — a different
+tolerance, a different settle rule — without re-running the simulation.
 
 ## License
 
