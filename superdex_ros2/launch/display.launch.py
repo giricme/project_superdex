@@ -2,6 +2,7 @@
 
     ros2 launch superdex_ros2 display.launch.py
     ros2 launch superdex_ros2 display.launch.py arm_mode:=twist rviz:=false
+    ros2 launch superdex_ros2 display.launch.py arm_mode:=joint arm_kp:=300.0
 
 Two frame trees run at once, deliberately:
 
@@ -44,6 +45,8 @@ def generate_launch_description() -> LaunchDescription:
 
     arm_mode = LaunchConfiguration("arm_mode")
     gui = LaunchConfiguration("gui")
+    arm_kp = LaunchConfiguration("arm_kp")
+    arm_kd = LaunchConfiguration("arm_kd")
     rviz = LaunchConfiguration("rviz")
     software_gl = PythonExpression([
         "'", LaunchConfiguration("rviz"), "' == 'true' and '",
@@ -53,6 +56,10 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         DeclareLaunchArgument("arm_mode", default_value="circle"),
         DeclareLaunchArgument("gui", default_value="false"),
+        # Only used when arm_mode:=joint, and expected to need tuning: the
+        # shipped joint-space gains are sized for fingers, not arm links.
+        DeclareLaunchArgument("arm_kp", default_value="150.0"),
+        DeclareLaunchArgument("arm_kd", default_value="15.0"),
         DeclareLaunchArgument("rviz", default_value="true"),
         DeclareLaunchArgument(
             "rviz_gl",
@@ -67,7 +74,14 @@ def generate_launch_description() -> LaunchDescription:
             name="superdex_sim",
             output="screen",
             emulate_tty=True,
-            parameters=[{"arm_mode": arm_mode, "gui": gui}],
+            parameters=[
+                {
+                    "arm_mode": arm_mode,
+                    "gui": gui,
+                    "arm_kp": arm_kp,
+                    "arm_kd": arm_kd,
+                }
+            ],
         ),
 
         # Everything downstream of the sim node needs use_sim_time: its stamps

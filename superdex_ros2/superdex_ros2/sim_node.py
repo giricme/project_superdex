@@ -33,7 +33,8 @@ Attaching the debugger is still supported and purely optional.
 
 The loop publishes /joint_states (position, velocity, effort), /clock, and the
 commanded vs. achieved end-effector pose each step, and accepts commands on
-/target_pose and /cmd_vel, and broadcasts every link frame on /tf.
+/target_pose, /cmd_vel and /joint_command, and broadcasts every link frame
+on /tf.
 Timestamps are simulated
 time, not wall time, so downstream nodes must run with use_sim_time:=true.
 Everything runs on one thread for now -- the sim loop *is* the node's loop, and
@@ -49,6 +50,10 @@ ROS serialization has eaten the per-step budget.
 Usage:
     # run until Ctrl-C
     .venv-ros/bin/python superdex_ros2/superdex_ros2/sim_node.py
+
+    # drive every joint from a policy publishing /joint_command
+    .venv-ros/bin/python superdex_ros2/superdex_ros2/sim_node.py \\
+        --ros-args -p arm_mode:=joint
 
     # run for 10 s of simulated time, then exit
     .venv-ros/bin/python superdex_ros2/superdex_ros2/sim_node.py \
@@ -68,6 +73,9 @@ Parameters:
         Ctrl-C or ROS shutdown.
     realtime (bool, default true)
         Pace the loop against the wall clock.
+    arm_kp, arm_kd, arm_saturation (double)
+        Joint-space gains applied to the ARM in joint mode only. The shipped
+        finger gains are far too soft for an arm link.
     gui (bool, default false)
         Launch and attach the SuperDex Physics Debugger. Off by default: attach()
         starts the debugger application, and a ROS node should not open a window
@@ -228,6 +236,62 @@ def get_default_bot_path() -> str:
 
 def main() -> None:
     """Load an arm-hand combo and drive the arm with OSC and the hand with JSC."""
+    # --- configuration ---------------------------------------------------------
+    # Read before anything is built: arm_mode decides how the joint-space
+    # controller is tuned, and that has to be known before the controller exists.
+    rclpy.init()
+    node = Node("superdex_sim")
+
+    # Simulated seconds to run. Zero or negative means run indefinitely, which is
+    # the default: a ROS node that exits on its own after ten seconds is a demo,
+    # not a simulator. A bounded run stays available for reproducible timing
+    # measurements, where a fixed step count is what makes the numbers
+    # comparable.
+    node.declare_parameter("duration", 0.0)
+    node.declare_parameter("realtime", True)
+    node.declare_parameter("gui", False)
+    node.declare_parameter("arm_mode", "circle")
+    node.declare_parameter("cmd_timeout", 0.5)
+    node.declare_parameter("workspace_radius", 0.8)
+    node.declare_parameter("workspace_z_min", 0.05)
+    node.declare_parameter("publish_tf", True)
+    node.declare_parameter("tf_rate", 50.0)
+    node.declare_parameter("tf_prefix", "sim_")
+    node.declare_parameter("debug_links", False)
+    # Joint-space gains for the ARM, used only in joint mode. The shipped
+    # example tunes one set of gains for the fingers (kp 3.0), which a
+    # seven-link arm will sag straight through. Gravity is disabled on every
+    # link -- see below -- so these only have to track, not hold weight.
+    # They are a starting point, not manufacturer data: raise arm_kp until
+    # tracking is acceptable, then raise arm_kd until it stops ringing.
+    node.declare_parameter("arm_kp", 150.0)  # [N m / rad]
+    node.declare_parameter("arm_kd", 15.0)  # [N m s / rad]
+    node.declare_parameter("arm_saturation", 80.0)  # [N m]
+    duration = float(node.get_parameter("duration").value)
+    realtime = bool(node.get_parameter("realtime").value)
+    gui = bool(node.get_parameter("gui").value)
+    arm_mode = str(node.get_parameter("arm_mode").value).lower()
+    cmd_timeout = float(node.get_parameter("cmd_timeout").value)
+    workspace_radius = float(node.get_parameter("workspace_radius").value)
+    workspace_z_min = float(node.get_parameter("workspace_z_min").value)
+    publish_tf = bool(node.get_parameter("publish_tf").value)
+    tf_rate = float(node.get_parameter("tf_rate").value)
+    tf_prefix = str(node.get_parameter("tf_prefix").value)
+    debug_links = bool(node.get_parameter("debug_links").value)
+    arm_kp = float(node.get_parameter("arm_kp").value)
+    arm_kd = float(node.get_parameter("arm_kd").value)
+    arm_saturation = float(node.get_parameter("arm_saturation").value)
+    run_forever = duration <= 0.0
+
+    valid_modes = ("circle", "pose", "twist", "hold", "joint")
+    if arm_mode not in valid_modes:
+        raise RuntimeError(f"arm_mode must be one of {valid_modes}, got '{arm_mode}'")
+    # In joint mode the Cartesian controller is switched off entirely and the
+    # joint-space controller owns every DOF, arm and hand alike -- which is what
+    # a policy trained in joint space, or a real robot's low-level command
+    # interface, expects to drive.
+    joint_mode = arm_mode == "joint"
+
     assets_path = ensure_assets_path()
     if assets_path is None:
         raise RuntimeError(
@@ -324,9 +388,20 @@ def main() -> None:
     # are all sized to the full actor, arm DOFs included.
     jsc = bot.create_controller("BASIC_JSC_PD")
     jsc_params = sdr.ControllerBasicJscPdParams()
-    jsc_params.kp = np.full(num_dofs, 3.0, dtype=np.float32)  # position gain [Nm/rad]
-    jsc_params.kd = np.full(num_dofs, 0.2, dtype=np.float32)  # damping gain [Nms/rad]
-    jsc_params.saturation = np.full(num_dofs, 2.0, dtype=np.float32)  # torque clamp
+    kp_vec = np.full(num_dofs, 3.0, dtype=np.float32)  # position gain [Nm/rad]
+    kd_vec = np.full(num_dofs, 0.2, dtype=np.float32)  # damping gain [Nms/rad]
+    sat_vec = np.full(num_dofs, 2.0, dtype=np.float32)  # torque clamp
+    if joint_mode:
+        # The finger gains above are far too soft to hold an arm link. In every
+        # other mode the arm entries of this controller's output are masked away
+        # and never applied, so they can stay soft; in joint mode they are what
+        # moves the arm.
+        kp_vec[arm_dof_indices] = arm_kp
+        kd_vec[arm_dof_indices] = arm_kd
+        sat_vec[arm_dof_indices] = arm_saturation
+    jsc_params.kp = kp_vec
+    jsc_params.kd = kd_vec
+    jsc_params.saturation = sat_vec
     jsc_params.deadband = np.zeros(num_dofs, dtype=np.float32)
     jsc.set_params(jsc_params)
 
@@ -384,42 +459,6 @@ def main() -> None:
     # Reusable scratch buffers and messages: the loop runs at 200 Hz, so
     # allocating a fresh DynamicArrayReal or JointState per step is avoidable
     # garbage. `name` never changes, so it is set once here.
-    rclpy.init()
-    node = Node("superdex_sim")
-
-    # Simulated seconds to run. Zero or negative means run indefinitely, which is
-    # the default: a ROS node that exits on its own after ten seconds is a demo,
-    # not a simulator. A bounded run stays available for reproducible timing
-    # measurements, where a fixed step count is what makes the numbers
-    # comparable.
-    node.declare_parameter("duration", 0.0)
-    node.declare_parameter("realtime", True)
-    node.declare_parameter("gui", False)
-    node.declare_parameter("arm_mode", "circle")
-    node.declare_parameter("cmd_timeout", 0.5)
-    node.declare_parameter("workspace_radius", 0.8)
-    node.declare_parameter("workspace_z_min", 0.05)
-    node.declare_parameter("publish_tf", True)
-    node.declare_parameter("tf_rate", 50.0)
-    node.declare_parameter("tf_prefix", "sim_")
-    node.declare_parameter("debug_links", False)
-    duration = float(node.get_parameter("duration").value)
-    realtime = bool(node.get_parameter("realtime").value)
-    gui = bool(node.get_parameter("gui").value)
-    arm_mode = str(node.get_parameter("arm_mode").value).lower()
-    cmd_timeout = float(node.get_parameter("cmd_timeout").value)
-    workspace_radius = float(node.get_parameter("workspace_radius").value)
-    workspace_z_min = float(node.get_parameter("workspace_z_min").value)
-    publish_tf = bool(node.get_parameter("publish_tf").value)
-    tf_rate = float(node.get_parameter("tf_rate").value)
-    tf_prefix = str(node.get_parameter("tf_prefix").value)
-    debug_links = bool(node.get_parameter("debug_links").value)
-    run_forever = duration <= 0.0
-
-    valid_modes = ("circle", "pose", "twist", "hold")
-    if arm_mode not in valid_modes:
-        raise RuntimeError(f"arm_mode must be one of {valid_modes}, got '{arm_mode}'")
-
     pub_joint_states = node.create_publisher(JointState, "joint_states", 10)
     pub_clock = node.create_publisher(Clock, "clock", 10)
     # Commanded vs. achieved end-effector pose. Publishing both makes tracking
@@ -432,7 +471,23 @@ def main() -> None:
     # stale message is worse than a dropped one, so we never queue.
     # `last_twist_time` is simulated time, so the timeout below is unaffected by
     # the realtime flag.
-    cmd = {"pose": None, "twist": np.zeros(6), "last_twist_time": -1e9}
+    cmd = {
+        "pose": None,
+        "twist": np.zeros(6),
+        "last_twist_time": -1e9,
+        # Joint-space command. The target is a standing value: uncommanded DOFs
+        # hold the startup pose, and a command that names only some joints
+        # leaves the rest where they were. Effort is a feedforward torque.
+        "joint_target": np.array(hold_pose, dtype=float),
+        "joint_effort": np.zeros(num_dofs, dtype=float),
+        "last_joint_time": -1e9,
+    }
+
+    # /joint_command is name-indexed, like the /joint_states it mirrors, so a
+    # publisher cannot silently transpose two joints by getting an array order
+    # wrong -- which is the failure a bare float array invites.
+    name_to_dof = {name: i for i, name in enumerate(joint_names)}
+    unknown_joint_names: set[str] = set()
 
     def on_target_pose(msg: PoseStamped) -> None:
         cmd["pose"] = pose_msg_to_transform(msg)
@@ -451,8 +506,43 @@ def main() -> None:
         )
         cmd["last_twist_time"] = scene.get_total_simulation_time()
 
+    def on_joint_command(msg: JointState) -> None:
+        """Merge a joint-space command into the standing target, by name."""
+        count = len(msg.name)
+        if count == 0:
+            return
+
+        target = cmd["joint_target"]
+        effort = cmd["joint_effort"]
+        has_position = len(msg.position) >= count
+        has_effort = len(msg.effort) >= count
+
+        # Feedforward torque never latches: a message that carries no effort
+        # clears it. Holding a stale torque is how a robot runs away when the
+        # publisher dies; holding a stale *position* is merely standing still,
+        # which is why the target below is left alone instead.
+        if not has_effort:
+            effort[:] = 0.0
+
+        for i, name in enumerate(msg.name):
+            dof = name_to_dof.get(name)
+            if dof is None:
+                if name not in unknown_joint_names:
+                    unknown_joint_names.add(name)
+                    node.get_logger().warning(
+                        f"/joint_command names unknown joint '{name}'; ignoring"
+                    )
+                continue
+            if has_position:
+                target[dof] = msg.position[i]
+            if has_effort:
+                effort[dof] = msg.effort[i]
+
+        cmd["last_joint_time"] = scene.get_total_simulation_time()
+
     node.create_subscription(PoseStamped, "target_pose", on_target_pose, 1)
     node.create_subscription(Twist, "cmd_vel", on_cmd_vel, 1)
+    node.create_subscription(JointState, "joint_command", on_joint_command, 1)
 
     pose_out = sdp.DynamicArrayReal(num_dofs)
     vel_out = sdp.DynamicArrayReal(num_dofs)
@@ -500,6 +590,12 @@ def main() -> None:
         + (", debugger GUI on" if gui else ", headless")
         + f", arm_mode={arm_mode}"
     )
+    if joint_mode:
+        node.get_logger().info(
+            f"joint mode: all {num_dofs} DOFs driven from /joint_command "
+            f"(sensor_msgs/JointState, name-indexed); arm gains "
+            f"kp={arm_kp:.0f} kd={arm_kd:.0f} sat={arm_saturation:.0f}"
+        )
     if publish_tf:
         node.get_logger().info(
             f"broadcasting {num_links} link frames on /tf at "
@@ -589,7 +685,13 @@ def main() -> None:
 
             # --- where the arm's Cartesian target comes from -------------------
             world_from_target_ee = sdp.TransformRT()
-            if arm_mode == "circle":
+            if joint_mode:
+                # There is no Cartesian target in this mode. Publishing the
+                # measured pose on /ee_target keeps that topic meaningful --
+                # commanded equals achieved by definition -- instead of
+                # emitting a stale identity transform.
+                world_from_target_ee = read_ee_world()
+            elif arm_mode == "circle":
                 # Upstream demo: a point on a circle, hand oriented into the ground.
                 theta = 2.0 * np.pi * t / circle_period
                 world_from_target_ee.translation = [
@@ -626,28 +728,41 @@ def main() -> None:
             # OSC targets are expressed in the actor root frame.
             target_root_from_ee = world_from_root.inverse() * world_from_target_ee
 
-            # JSC target: the default pose everywhere, with the four knuckles
-            # driven by a phase-shifted sine.
-            target_pose = np.array(hold_pose, dtype=np_real)
-            for finger, knuckle_dof in enumerate(knuckle_dofs):
-                target_pose[knuckle_dof] = sweep_mid + sweep_amplitude * np.sin(
-                    2.0 * np.pi * t / sweep_period + finger * finger_phase_offset
-                )
+            # JSC target.
+            if joint_mode:
+                # Fully commanded: every DOF comes from /joint_command, and the
+                # knuckle sweep is off. A policy driving joint space owns the
+                # hand as well as the arm.
+                target_pose = np.array(cmd["joint_target"], dtype=np_real)
+            else:
+                # The default pose everywhere, with the four knuckles driven by
+                # a phase-shifted sine.
+                target_pose = np.array(hold_pose, dtype=np_real)
+                for finger, knuckle_dof in enumerate(knuckle_dofs):
+                    target_pose[knuckle_dof] = sweep_mid + sweep_amplitude * np.sin(
+                        2.0 * np.pi * t / sweep_period + finger * finger_phase_offset
+                    )
 
             # np.array (not np.asarray) because the spans the controllers return
             # are read-only views onto their internal buffers.
             # Each controller reads its own observations off the simulation; the
             # JSC additionally needs the control period, which cannot be harvested.
-            osc_obsv = osc.get_current_observations_from_mochi()
-            arm_tau = np.array(
-                osc.compute_output(
-                    osc_obsv,
-                    sdr.ControllerBasicOscPdTarget(
-                        root_from_target_ee=target_root_from_ee
+            if joint_mode:
+                # The Cartesian controller is switched off, not merely ignored:
+                # computing its output and discarding it would waste a Jacobian
+                # every step.
+                arm_tau = np.zeros(num_dofs, dtype=np.float32)
+            else:
+                osc_obsv = osc.get_current_observations_from_mochi()
+                arm_tau = np.array(
+                    osc.compute_output(
+                        osc_obsv,
+                        sdr.ControllerBasicOscPdTarget(
+                            root_from_target_ee=target_root_from_ee
+                        ),
                     ),
-                ),
-                dtype=np.float32,
-            )
+                    dtype=np.float32,
+                )
             jsc_obsv = jsc.get_current_observations_from_mochi()
             jsc_obsv.dt = time_step
             hand_tau = np.array(
@@ -662,8 +777,15 @@ def main() -> None:
             # everything outside its arm chain, but JSC does not, so we zero its
             # arm entries here -- otherwise it would fight OSC over those DOFs.
             # With the two now disjoint, the combined torque is just their sum.
-            hand_tau[arm_dof_indices] = 0.0
+            if not joint_mode:
+                hand_tau[arm_dof_indices] = 0.0
             total_tau = arm_tau + hand_tau
+
+            if joint_mode and t - cmd["last_joint_time"] <= cmd_timeout:
+                # Feedforward torque, for a policy that outputs torques rather
+                # than positions. Applied only while commands are fresh: see
+                # on_joint_command for why a stale torque is the dangerous one.
+                total_tau = total_tau + cmd["joint_effort"].astype(np.float32)
             bot_actor.set_external_forces_on_dofs(
                 dof_indices=all_dof_indices,
                 force_values=total_tau,

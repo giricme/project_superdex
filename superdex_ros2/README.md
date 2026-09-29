@@ -4,11 +4,14 @@ A ROS 2 interface to [Project SuperDex](https://github.com/facebookresearch/proj
 
 SuperDex ships a contact-first physics engine, robot assets and controllers, but
 no ROS integration of any kind. This package adds the missing seam: simulated
-robot state flows out as standard ROS messages, and Cartesian commands flow in,
+robot state flows out as standard ROS messages, and commands flow in — end-effector
+poses and twists for Cartesian control, joint targets and torques for policies —
 so unmodified ROS 2 tooling can observe and drive a SuperDex simulation.
 
-Demonstrated with `teleop_twist_keyboard` — a node written for mobile bases,
-used unchanged to drive a 27-DOF FR3 arm with a DG5F dexterous hand.
+Demonstrated two ways: `teleop_twist_keyboard`, a node written for mobile bases,
+driving a 27-DOF FR3 arm with a DG5F dexterous hand without modification; and a
+policy node that reads `/joint_states` and writes `/joint_command`, which is the
+same loop a learned policy runs against real hardware.
 
 ## Workspace layout
 
@@ -22,6 +25,7 @@ crawls only `src/` instead of the whole SuperDex tree.
 │   └── superdex_ros2/                <- this package
 │       ├── superdex_ros2/sim_node.py <- the bridge
 │       ├── superdex_ros2/trial_runner.py  <- waypoint trials
+│       ├── superdex_ros2/example_policy.py <- stand-in policy node
 │       ├── tools/bot_to_urdf.py      <- .superdex_bot -> URDF converter
 │       ├── tools/analyze_trials.py   <- offline metrics from a recorded session
 │       ├── launch/                   <- sim.launch.py, display.launch.py
@@ -91,7 +95,8 @@ the source checkout instead of the install tree.
 | File | Brings up |
 |---|---|
 | `sim.launch.py` | The sim node alone. Every node parameter is a launch argument. |
-| `display.launch.py` | Sim node + `robot_state_publisher` + RViz, with `use_sim_time` set on both consumers. Arguments: `arm_mode`, `gui`, `rviz`, `rviz_gl`. |
+| `display.launch.py` | Sim node + `robot_state_publisher` + RViz, with `use_sim_time` set on both consumers. Arguments: `arm_mode`, `gui`, `rviz`, `rviz_gl`, `arm_kp`, `arm_kd`. |
+| `example_policy` (a node, not a launch file) | Stand-in policy: `/joint_states` in, `/joint_command` out. Run alongside `arm_mode:=joint`. |
 | `trials.launch.py` | A headless waypoint-trial session: sim node in `pose` mode, `robot_state_publisher`, a bag recorder and the trial runner. Shuts everything down when the trials finish. Arguments: `seed`, `n_targets`, `tolerance`, `tf_rate`, `rsp_rate`, `output_dir`. |
 
 ### Assets
@@ -455,6 +460,7 @@ Notes on the setup:
 | `/ee_target` | `geometry_msgs/PoseStamped` | out | 200 Hz |
 | `/target_pose` | `geometry_msgs/PoseStamped` | in | — |
 | `/cmd_vel` | `geometry_msgs/Twist` | in | — |
+| `/joint_command` | `sensor_msgs/JointState` | in | — |
 
 `/joint_states` carries position, velocity and commanded effort for all 27 DOFs.
 `/tf` broadcasts all 38 link frames as direct children of `world`, prefixed
@@ -468,6 +474,9 @@ perfectly good transform:
 ```bash
 ros2 run tf2_ros tf2_echo world sim_fr3_link8 --ros-args -p use_sim_time:=true
 ```
+
+`/joint_command` is the mirror of `/joint_states` and is described under
+[joint-space control](#joint-space-control-policy-rollout).
 
 `/ee_pose` and `/ee_target` are diagnostics: actual versus commanded
 end-effector pose, for plotting tracking error without a TF lookup.
@@ -491,6 +500,9 @@ rqt_plot /ee_target/pose/position/x /ee_pose/pose/position/x
 | `tf_rate` | `50.0` | `/tf` rate [Hz]. 38 frames at 200 Hz is 7600 msg/s for no benefit. |
 | `tf_prefix` | `sim_` | Prefix for broadcast frame names. |
 | `debug_links` | `false` | Print the link and DOF tables once at startup. |
+| `arm_kp` | `150.0` | Arm joint-space position gain [N·m/rad]. Joint mode only. |
+| `arm_kd` | `15.0` | Arm joint-space damping gain [N·m·s/rad]. Joint mode only. |
+| `arm_saturation` | `80.0` | Arm per-joint torque clamp [N·m]. Joint mode only. |
 
 ### `arm_mode`
 
@@ -499,8 +511,79 @@ rqt_plot /ee_target/pose/position/x /ee_pose/pose/position/x
   first message arrives.
 - `twist` — integrate `/cmd_vel` into the target. For keyboard and gamepad teleop.
 - `hold` — stay at the startup pose. Useful as a control condition when timing.
+- `joint` — drive every DOF from `/joint_command`. Cartesian control is off.
 
-The hand is unaffected by `arm_mode`; it always runs the example's knuckle sweep.
+In the first four modes the hand is unaffected by `arm_mode` and always runs the
+example's knuckle sweep. `joint` is the exception: it hands the whole robot over
+to the command topic.
+
+## Joint-space control (policy rollout)
+
+The Cartesian modes above are the wrong shape for a learned policy. Policies —
+and real hardware, a Unitree arm for instance — work in joint space: the policy
+emits joint targets or torques and something underneath closes the loop at a
+higher rate. `arm_mode:=joint` gives the bridge that interface, so the same
+policy node can drive the simulator and the real robot without changes.
+
+```bash
+ros2 launch superdex_ros2 display.launch.py arm_mode:=joint
+ros2 run superdex_ros2 example_policy
+```
+
+What changes in this mode:
+
+- The Cartesian controller is switched off, not merely ignored — computing a
+  Jacobian and discarding the result every step would be waste.
+- The joint-space controller owns all 27 DOFs instead of just the hand, so the
+  masking that normally keeps the two controllers off each other's DOFs is
+  skipped.
+- The knuckle sweep stops. A policy driving joint space owns the hand too.
+
+### The command
+
+`/joint_command` is `sensor_msgs/JointState`, the mirror of what the bridge
+publishes. It is **name-indexed**, which matters: a bare float array invites a
+publisher to transpose two joints silently, and nothing downstream would catch
+it. Unknown names are ignored with a one-time warning.
+
+- **`position`** is a standing target. Uncommanded joints hold the startup pose,
+  and a message naming only some joints leaves the rest where they were.
+- **`effort`** is feedforward torque, for a policy that outputs torques. It is
+  applied only while commands are fresh (`cmd_timeout`), and a message carrying
+  no effort array clears it. Stale *position* is standing still; stale *torque*
+  is how a robot runs away.
+
+### Gains
+
+The shipped example tunes one set of joint-space gains for the fingers
+(`kp = 3.0`), which a seven-link arm sags straight through. In every other mode
+the arm entries of that controller's output are masked away and never applied,
+so it does not matter; in joint mode they are what moves the arm. Hence
+`arm_kp`, `arm_kd` and `arm_saturation`, applied to the arm DOFs only.
+
+The defaults (150 / 15 / 80) were chosen by reasoning, not measurement, and are
+worth re-checking on any other robot. Gravity is disabled on every link — see
+the shipped example's "cheap gravity compensation" — so they only have to track,
+not hold weight. Measured on the FR3: **~1 mrad of steady-state error** on a
+held joint, which is tight enough to leave alone.
+
+If the arm sags, raise `arm_kp` (300, then 600). If it rings, raise `arm_kd`.
+
+### The example policy
+
+`example_policy` is a stand-in: it reads `/joint_states`, computes an action,
+publishes `/joint_command`, and runs at 50 Hz against the simulation's 200 Hz —
+deliberately, because that is the real situation. A policy runs at tens of Hz
+while the controller under it runs at hundreds, and the last action is held in
+between.
+
+The interesting part is the shape, not the contents. `Policy.act()` maps an
+observation dictionary to an action dictionary; replacing it with a network
+forward pass changes nothing else, and pointing the same node at a real robot's
+joint-command topic changes nothing about the node.
+
+Parameters: `decimation` (default 4), `amplitude` (0.25 rad), `period` (6.0 s),
+`joints` (which joints to move; everything else is commanded to hold).
 
 ## Teleop
 
@@ -625,6 +708,21 @@ throttling the approach.
 Path deviation is worth keeping as a baseline: this is Cartesian impedance
 control with no path planning, so 17 mm of wander from the direct route is what
 a planner would later be compared against.
+
+### Task: joint-space policy rollout
+
+`example_policy` driving all 27 DOFs at 50 Hz against the 200 Hz simulation,
+with the default arm gains (`arm_kp = 150`):
+
+| Metric | Result |
+|---|---|
+| Steady-state error, held joint | ~1 mrad |
+| Driven joints | track a 0.25 rad, 6 s sinusoid |
+
+A per-joint tracking error over several cycles — the joint-space counterpart to
+the 4.2 mm Cartesian figure — is still to do; it is a join of `/joint_command`
+and `/joint_states` on joint name and timestamp, both of which a recorded
+session already contains.
 
 ### Reproducing
 
