@@ -78,14 +78,18 @@ ros2 run superdex_ros2 example_policy
 
 ```bash
 cd ros2_ws
-ros2 launch superdex_ros2 trials.launch.py \
-    seed:=0 n_targets:=20 tolerance:=0.010 tf_rate:=200.0 rsp_rate:=200.0
+for s in 0 1 2; do
+  ros2 launch superdex_ros2 trials.launch.py \
+      seed:=$s n_targets:=20 tolerance:=0.010 tf_rate:=200.0 rsp_rate:=200.0
+done
 
 .venv-ros/bin/python ../project_superdex/superdex_ros2/tools/analyze_trials.py \
-    trials/<timestamp>
+    trials/<timestamp>          # once per session
 
+# pool every seed into one figure set
 python3 ../project_superdex/superdex_ros2/tools/plot_metrics.py \
-    trials/<timestamp>
+    trials/<ts-seed0> trials/<ts-seed1> trials/<ts-seed2> \
+    --outdir ../project_superdex/report/figures
 ```
 
 Results land in `trials/<timestamp>/`: `summary.txt`, `metrics_trials.csv`,

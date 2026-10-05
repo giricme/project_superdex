@@ -81,7 +81,10 @@ Parameters:
         starts the debugger application, and a ROS node should not open a window
         unasked. Closing the debugger no longer stops the run.
     arm_mode (string, default "circle")
-        Where the arm's Cartesian target comes from.
+        Where the arm's Cartesian target comes from. Changeable at runtime --
+        `ros2 param set /superdex_sim arm_mode twist` -- which avoids the
+        restart of simulated time that relaunching causes, and the TF buffer
+        clear that follows it.
           circle -- the upstream demo trajectory, self-driving, no commander needed
           pose   -- latest /target_pose (geometry_msgs/PoseStamped)
           twist  -- integrate /cmd_vel (geometry_msgs/Twist), e.g. from
@@ -106,6 +109,7 @@ import superdex.physics as sdp
 import superdex.robotics as sdr
 from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import PoseStamped, TransformStamped, Twist
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
@@ -237,8 +241,8 @@ def get_default_bot_path() -> str:
 def main() -> None:
     """Load an arm-hand combo and drive the arm with OSC and the hand with JSC."""
     # --- configuration ---------------------------------------------------------
-    # Read before anything is built: arm_mode decides how the joint-space
-    # controller is tuned, and that has to be known before the controller exists.
+    # Read before anything is built, so the controllers can be configured once
+    # for every mode they may later be switched into.
     rclpy.init()
     node = Node("superdex_sim")
 
@@ -290,7 +294,11 @@ def main() -> None:
     # joint-space controller owns every DOF, arm and hand alike -- which is what
     # a policy trained in joint space, or a real robot's low-level command
     # interface, expects to drive.
-    joint_mode = arm_mode == "joint"
+    # Held in a dict rather than a local so the parameter callback below can
+    # change it mid-run: switching modes by relaunching restarts simulated time,
+    # which makes every TF consumer clear its buffer and report a jump back in
+    # time. Live switching avoids that entirely.
+    mode = {"arm": arm_mode, "joint": arm_mode == "joint"}
 
     assets_path = ensure_assets_path()
     if assets_path is None:
@@ -391,14 +399,14 @@ def main() -> None:
     kp_vec = np.full(num_dofs, 3.0, dtype=np.float32)  # position gain [Nm/rad]
     kd_vec = np.full(num_dofs, 0.2, dtype=np.float32)  # damping gain [Nms/rad]
     sat_vec = np.full(num_dofs, 2.0, dtype=np.float32)  # torque clamp
-    if joint_mode:
-        # The finger gains above are far too soft to hold an arm link. In every
-        # other mode the arm entries of this controller's output are masked away
-        # and never applied, so they can stay soft; in joint mode they are what
-        # moves the arm.
-        kp_vec[arm_dof_indices] = arm_kp
-        kd_vec[arm_dof_indices] = arm_kd
-        sat_vec[arm_dof_indices] = arm_saturation
+    # Arm gains are set in every mode, not just joint mode. The finger gains
+    # above are far too soft to hold an arm link, but outside joint mode this
+    # controller's arm entries are masked to zero before the torque is applied,
+    # so they reach nothing -- which is what makes switching modes at runtime
+    # safe without rebuilding the controller.
+    kp_vec[arm_dof_indices] = arm_kp
+    kd_vec[arm_dof_indices] = arm_kd
+    sat_vec[arm_dof_indices] = arm_saturation
     jsc_params.kp = kp_vec
     jsc_params.kd = kd_vec
     jsc_params.saturation = sat_vec
@@ -481,6 +489,9 @@ def main() -> None:
         "joint_target": np.array(hold_pose, dtype=float),
         "joint_effort": np.zeros(num_dofs, dtype=float),
         "last_joint_time": -1e9,
+        # Cartesian target, seeded from the live pose further down.
+        "xyz": None,
+        "rot": None,
     }
 
     # /joint_command is name-indexed, like the /joint_states it mirrors, so a
@@ -544,6 +555,48 @@ def main() -> None:
     node.create_subscription(Twist, "cmd_vel", on_cmd_vel, 1)
     node.create_subscription(JointState, "joint_command", on_joint_command, 1)
 
+    def on_set_parameters(params) -> SetParametersResult:
+        """Allow arm_mode to change at runtime.
+
+        Relaunching to change mode restarts simulated time, so every TF consumer
+        clears its buffer and reports a jump back in time -- which during a live
+        demo is indistinguishable from a crash. Switching in place avoids it.
+
+        Each switch re-seeds the target it is switching *into* from the live
+        state, so the arm never chases a target left over from the previous
+        mode.
+        """
+        for param in params:
+            if param.name != "arm_mode":
+                continue
+            requested = str(param.value).lower()
+            if requested not in valid_modes:
+                return SetParametersResult(
+                    successful=False,
+                    reason=f"arm_mode must be one of {valid_modes}",
+                )
+
+            if requested == "joint":
+                # Hold the pose the arm is in, rather than whatever a policy
+                # last sent -- which may be minutes stale.
+                bot_actor.get_articulated_pose(pose_out)
+                cmd["joint_target"] = np.asarray(pose_out, dtype=float).copy()
+                cmd["joint_effort"][:] = 0.0
+                cmd["last_joint_time"] = -1e9
+            else:
+                here = read_ee_world()
+                cmd["xyz"] = np.asarray(here.translation, dtype=float).copy()
+                cmd["rot"] = here.rotation
+                cmd["twist"][:] = 0.0
+                cmd["last_twist_time"] = -1e9
+
+            mode["arm"] = requested
+            mode["joint"] = requested == "joint"
+            node.get_logger().info(f"arm_mode -> {requested}")
+        return SetParametersResult(successful=True)
+
+    node.add_on_set_parameters_callback(on_set_parameters)
+
     pose_out = sdp.DynamicArrayReal(num_dofs)
     vel_out = sdp.DynamicArrayReal(num_dofs)
 
@@ -590,7 +643,7 @@ def main() -> None:
         + (", debugger GUI on" if gui else ", headless")
         + f", arm_mode={arm_mode}"
     )
-    if joint_mode:
+    if mode["joint"]:
         node.get_logger().info(
             f"joint mode: all {num_dofs} DOFs driven from /joint_command "
             f"(sensor_msgs/JointState, name-indexed); arm gains "
@@ -645,8 +698,8 @@ def main() -> None:
     # "twist" start from a zero-error condition and the arm does not jump on the
     # first step.
     start_ee = read_ee_world()
-    cmd_xyz = np.asarray(start_ee.translation, dtype=float).copy()
-    cmd_rot = start_ee.rotation
+    cmd["xyz"] = np.asarray(start_ee.translation, dtype=float).copy()
+    cmd["rot"] = start_ee.rotation
 
     try:
         if gui:
@@ -685,13 +738,13 @@ def main() -> None:
 
             # --- where the arm's Cartesian target comes from -------------------
             world_from_target_ee = sdp.TransformRT()
-            if joint_mode:
+            if mode["joint"]:
                 # There is no Cartesian target in this mode. Publishing the
                 # measured pose on /ee_target keeps that topic meaningful --
                 # commanded equals achieved by definition -- instead of
                 # emitting a stale identity transform.
                 world_from_target_ee = read_ee_world()
-            elif arm_mode == "circle":
+            elif mode["arm"] == "circle":
                 # Upstream demo: a point on a circle, hand oriented into the ground.
                 theta = 2.0 * np.pi * t / circle_period
                 world_from_target_ee.translation = [
@@ -701,35 +754,35 @@ def main() -> None:
                 ]
                 world_from_target_ee.rotation = ee_down
             else:
-                if arm_mode == "pose" and cmd["pose"] is not None:
-                    cmd_xyz = np.asarray(cmd["pose"].translation, dtype=float).copy()
-                    cmd_rot = cmd["pose"].rotation
-                elif arm_mode == "twist":
+                if mode["arm"] == "pose" and cmd["pose"] is not None:
+                    cmd["xyz"] = np.asarray(cmd["pose"].translation, dtype=float).copy()
+                    cmd["rot"] = cmd["pose"].rotation
+                elif mode["arm"] == "twist":
                     # Integrate only while commands are fresh: a dead teleop
                     # publisher must not leave the target drifting.
                     if t - cmd["last_twist_time"] <= cmd_timeout:
                         v = cmd["twist"][:3]
                         w = cmd["twist"][3:]
-                        cmd_xyz = cmd_xyz + v * time_step
+                        cmd["xyz"] = cmd["xyz"] + v * time_step
                         if np.any(w):
                             # World-frame angular velocity, so the incremental
                             # rotation pre-multiplies the current orientation.
                             dq = sdp.Quaternion.from_rotation_vector(
                                 (w * time_step).tolist()
                             )
-                            cmd_rot = dq * cmd_rot
+                            cmd["rot"] = dq * cmd["rot"]
                 # "hold" and the not-yet-commanded cases fall through with
-                # cmd_xyz / cmd_rot unchanged.
-                cmd_xyz = clamp_to_workspace(
-                    cmd_xyz, root_pos, workspace_radius, workspace_z_min
+                # cmd["xyz"] / cmd["rot"] unchanged.
+                cmd["xyz"] = clamp_to_workspace(
+                    cmd["xyz"], root_pos, workspace_radius, workspace_z_min
                 )
-                world_from_target_ee.translation = cmd_xyz.tolist()
-                world_from_target_ee.rotation = cmd_rot
+                world_from_target_ee.translation = cmd["xyz"].tolist()
+                world_from_target_ee.rotation = cmd["rot"]
             # OSC targets are expressed in the actor root frame.
             target_root_from_ee = world_from_root.inverse() * world_from_target_ee
 
             # JSC target.
-            if joint_mode:
+            if mode["joint"]:
                 # Fully commanded: every DOF comes from /joint_command, and the
                 # knuckle sweep is off. A policy driving joint space owns the
                 # hand as well as the arm.
@@ -747,7 +800,7 @@ def main() -> None:
             # are read-only views onto their internal buffers.
             # Each controller reads its own observations off the simulation; the
             # JSC additionally needs the control period, which cannot be harvested.
-            if joint_mode:
+            if mode["joint"]:
                 # The Cartesian controller is switched off, not merely ignored:
                 # computing its output and discarding it would waste a Jacobian
                 # every step.
@@ -777,11 +830,11 @@ def main() -> None:
             # everything outside its arm chain, but JSC does not, so we zero its
             # arm entries here -- otherwise it would fight OSC over those DOFs.
             # With the two now disjoint, the combined torque is just their sum.
-            if not joint_mode:
+            if not mode["joint"]:
                 hand_tau[arm_dof_indices] = 0.0
             total_tau = arm_tau + hand_tau
 
-            if joint_mode and t - cmd["last_joint_time"] <= cmd_timeout:
+            if mode["joint"] and t - cmd["last_joint_time"] <= cmd_timeout:
                 # Feedforward torque, for a policy that outputs torques rather
                 # than positions. Applied only while commands are fresh: see
                 # on_joint_command for why a stale torque is the dangerous one.

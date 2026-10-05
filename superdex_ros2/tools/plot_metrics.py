@@ -2,11 +2,18 @@
 # Copyright (c) 2026 Team 6. Licensed under the Apache License, Version 2.0.
 """Render the report figures from a recorded trial session.
 
-    python3 tools/plot_metrics.py trials/20260928-163202 --outdir figures
+    python3 tools/plot_metrics.py trials/2026* --outdir figures
 
-Reads ``metrics_trials.csv`` (written by ``analyze_trials.py``) and emits vector
-PDFs sized for inclusion in LaTeX. Figures carry no titles: the caption names
-them, which is the convention in a paper and avoids saying it twice.
+Reads ``metrics_trials.csv`` (written by ``analyze_trials.py``) from one or more
+sessions and emits vector PDFs sized for inclusion in LaTeX. Figures carry no
+titles: the caption names them, which is the convention in a paper and avoids
+saying it twice.
+
+Several sessions are **pooled into one series**, not drawn as separate colours.
+Different seeds are independent draws from the same workspace, not categories
+worth distinguishing: colouring by seed would imply the seed matters. Whether
+the result reproduces across seeds is a question about the numbers, so the
+per-seed summary is printed to stdout instead, ready to quote.
 
 Only matplotlib and numpy are needed -- no ROS, no bag -- so this runs anywhere
 the CSVs have been copied to.
@@ -26,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 from pathlib import Path
 
@@ -93,17 +101,40 @@ def style() -> None:
     })
 
 
-def read_trials(path: Path) -> dict[str, np.ndarray]:
-    """Load metrics_trials.csv into column arrays."""
-    with path.open(newline="") as handle:
+def read_session(session: Path) -> tuple[list[dict[str, float]], str]:
+    """Load one session's trial rows, plus a label for it.
+
+    The seed lives in trials.json rather than the CSV, so it is read from there
+    when available and the directory name is used otherwise -- enough to label a
+    summary line without making the CSV the only required input.
+    """
+    csv_path = session / "metrics_trials.csv"
+    if not csv_path.is_file():
+        raise SystemExit(f"{csv_path} not found -- run analyze_trials.py first")
+
+    with csv_path.open(newline="") as handle:
         rows = list(csv.DictReader(handle))
     if not rows:
-        raise SystemExit(f"{path} has no rows")
+        raise SystemExit(f"{csv_path} has no rows")
 
-    def column(name: str) -> np.ndarray:
-        return np.array([float(r[name]) if r[name] else math.nan for r in rows])
+    label = session.name
+    index_path = session / "trials.json"
+    if index_path.is_file():
+        try:
+            label = f"seed {json.loads(index_path.read_text())['seed']}"
+        except (ValueError, KeyError):
+            pass
 
-    return {name: column(name) for name in rows[0]}
+    parsed = [
+        {k: (float(v) if v not in ("", None) else math.nan) for k, v in row.items()}
+        for row in rows
+    ]
+    return parsed, label
+
+
+def columns(rows: list[dict[str, float]]) -> dict[str, np.ndarray]:
+    """Turn a list of trial dicts into column arrays."""
+    return {name: np.array([r[name] for r in rows]) for name in rows[0]}
 
 
 def finish(fig, ax, path: Path, xlabel: str, ylabel: str, grid_axis: str) -> None:
@@ -129,6 +160,7 @@ def plot_error_distribution(
     """
     error_mm = np.sort(data["position_error_m"] * 1e3)
     rank = np.arange(1, len(error_mm) + 1)
+    n = len(error_mm)
 
     fig, ax = plt.subplots(figsize=(width, width * 0.62))
 
@@ -137,8 +169,8 @@ def plot_error_distribution(
         ax.axvline(tolerance, color=color, linewidth=1.0, linestyle=(0, (4, 3)), zorder=2)
         ax.text(
             tolerance,
-            len(error_mm) + 0.9,
-            f" {label} tolerance\n {passing}/{len(error_mm)} pass",
+            n * 1.045,
+            f" {label} tolerance\n {passing}/{n} pass",
             color=color,
             fontsize=7.5,
             va="bottom",
@@ -146,11 +178,12 @@ def plot_error_distribution(
             linespacing=1.4,
         )
 
+    # Marks shrink as the sample grows so 60 sorted points stay separable.
     ax.plot(
         error_mm,
         rank,
         marker="o",
-        markersize=4,
+        markersize=4 if n <= 25 else 2.8,
         linestyle="none",
         color=SERIES_1,
         markeredgecolor=SURFACE,  # 2px surface ring, for overlapping marks
@@ -161,7 +194,7 @@ def plot_error_distribution(
     # Room for the right-hand tolerance label to sit outside its rule without
     # running into the axis edge.
     ax.set_xlim(0, 13.5)
-    ax.set_ylim(0, len(error_mm) + 4.5)
+    ax.set_ylim(0, n * 1.22)
     finish(
         fig,
         ax,
@@ -227,7 +260,8 @@ def plot_against_distance(
 
         fig, ax = plt.subplots(figsize=(width, width * 0.62))
         ax.plot(
-            x, y, marker="o", markersize=4.5, linestyle="none",
+            x, y, marker="o", markersize=4.5 if len(x) <= 25 else 3.4,
+            linestyle="none",
             color=SERIES_1, markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3,
         )
 
@@ -249,10 +283,45 @@ def plot_against_distance(
         finish(fig, ax, outdir / filename, "Travel distance (cm)", ylabel, "y")
 
 
+def summarize(label: str, rows: list[dict[str, float]]) -> list[str]:
+    """Per-session summary lines, covering every metric the report quotes.
+
+    Pooled standard deviations are computed over the pooled sample rather than
+    averaged from the per-session ones, which would understate the spread.
+    """
+    def stats(key: str, scale: float) -> tuple[float, float, float, float, int]:
+        v = np.array([r[key] for r in rows]) * scale
+        v = v[~np.isnan(v)]
+        if v.size == 0:
+            return (math.nan,) * 4 + (0,)
+        return v.mean(), v.std(), v.min(), v.max(), v.size
+
+    err = stats("position_error_m", 1e3)
+    ori = stats("orientation_error_rad", 180.0 / math.pi)
+    settle = stats("settle_time_s", 1.0)
+    path = stats("path_deviation_m", 1e3)
+    settled = int(sum(r["settled"] for r in rows))
+
+    return [
+        f"  {label}  (n={len(rows)}, settled {settled}/{len(rows)})",
+        f"      position error     {err[0]:5.2f} ± {err[1]:4.2f} mm "
+        f"(range {err[2]:5.2f}–{err[3]:5.2f})",
+        f"      orientation error  {ori[0]:5.2f} ± {ori[1]:4.2f} deg "
+        f"(range {ori[2]:5.2f}–{ori[3]:5.2f})",
+        f"      settle time        {settle[0]:5.2f} ± {settle[1]:4.2f} s  "
+        f"(range {settle[2]:5.2f}–{settle[3]:5.2f}, n={settle[4]})",
+        f"      path deviation     {path[0]:5.2f} ± {path[1]:4.2f} mm "
+        f"(range {path[2]:5.2f}–{path[3]:5.2f})",
+    ]
+
+
 def main() -> int:
     """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("session", type=Path, help="Directory holding metrics_trials.csv")
+    parser.add_argument(
+        "sessions", type=Path, nargs="+",
+        help="One or more session directories; several are pooled",
+    )
     parser.add_argument("--outdir", type=Path, default=None)
     parser.add_argument(
         "--width", type=float, default=5.0,
@@ -260,16 +329,33 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    trials_csv = args.session / "metrics_trials.csv"
-    if not trials_csv.is_file():
-        parser.error(f"{trials_csv} not found -- run analyze_trials.py first")
+    pooled: list[dict[str, float]] = []
+    per_session: list[tuple[str, list[dict[str, float]]]] = []
+    for session in args.sessions:
+        rows, label = read_session(session)
+        per_session.append((label, rows))
+        pooled.extend(rows)
 
-    outdir = args.outdir or (args.session / "figures")
+    # Writing figures into the first session's directory when several are pooled
+    # would file a 60-trial result under one of its three inputs. Ask instead.
+    if args.outdir is None:
+        if len(args.sessions) > 1:
+            parser.error("--outdir is required when pooling several sessions")
+        outdir = args.sessions[0] / "figures"
+    else:
+        outdir = args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
 
+    print(f"Pooled {len(pooled)} trials from {len(per_session)} session(s):\n")
+    for label, rows in per_session:
+        print("\n".join(summarize(label, rows)))
+    if len(per_session) > 1:
+        print()
+        print("\n".join(summarize("POOLED", pooled)))
+
     style()
-    data = read_trials(trials_csv)
-    print(f"Read {len(data['index'])} trials from {trials_csv}")
+    data = columns(pooled)
+    print()
     plot_error_distribution(data, outdir, args.width)
     plot_residual_rates(outdir, args.width)
     plot_against_distance(data, outdir, args.width)
