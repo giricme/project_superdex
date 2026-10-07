@@ -15,6 +15,7 @@ uv pip install --python .venv-ros/bin/python superdex
 
 mkdir -p src
 ln -sfn ../../project_superdex/superdex_ros2 src/superdex_ros2
+ln -sfn ../../project_superdex/superdex_ros2_msgs src/superdex_ros2_msgs
 ```
 
 Generate the robot model (once; the output is committed):
@@ -72,6 +73,10 @@ ros2 topic pub --once /target_pose geometry_msgs/PoseStamped \
 # policy rollout over all 27 DOFs
 ros2 launch superdex_ros2 display.launch.py arm_mode:=joint
 ros2 run superdex_ros2 example_policy
+
+# contacts (off by default; empty in the stock scene -- nothing to touch)
+ros2 launch superdex_ros2 display.launch.py publish_contacts:=true
+ros2 topic echo /contacts --once
 ```
 
 ## Measure
@@ -121,3 +126,4 @@ ros2 run tf2_ros tf2_echo sim_fr3_link8 fr3_link8 --ros-args -p use_sim_time:=tr
 | "unconnected trees" / "jump back in time" | `pkill -f sim_node`, relaunch, restart RViz |
 | RViz window never opens | `rviz_gl:=hardware`, or see README for the Pop!\_OS notes |
 | Launch file not found | New file — rebuild |
+| `superdex_ros2_msgs is not importable` | `colcon build --packages-select superdex_ros2_msgs`, then re-source `install/setup.bash` |

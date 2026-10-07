@@ -3,6 +3,7 @@
     ros2 launch superdex_ros2 display.launch.py
     ros2 launch superdex_ros2 display.launch.py arm_mode:=twist rviz:=false
     ros2 launch superdex_ros2 display.launch.py arm_mode:=joint arm_kp:=300.0
+    ros2 launch superdex_ros2 display.launch.py publish_contacts:=true
 
 Two frame trees run at once, deliberately:
 
@@ -47,6 +48,7 @@ def generate_launch_description() -> LaunchDescription:
     gui = LaunchConfiguration("gui")
     arm_kp = LaunchConfiguration("arm_kp")
     arm_kd = LaunchConfiguration("arm_kd")
+    publish_contacts = LaunchConfiguration("publish_contacts")
     rviz = LaunchConfiguration("rviz")
     software_gl = PythonExpression([
         "'", LaunchConfiguration("rviz"), "' == 'true' and '",
@@ -60,6 +62,10 @@ def generate_launch_description() -> LaunchDescription:
         # shipped joint-space gains are sized for fingers, not arm links.
         DeclareLaunchArgument("arm_kp", default_value="150.0"),
         DeclareLaunchArgument("arm_kd", default_value="15.0"),
+        # Off by default: the query costs engine work every step, and RViz has
+        # no display for this message type, so it is only worth paying for when
+        # something is actually subscribing. Requires superdex_ros2_msgs built.
+        DeclareLaunchArgument("publish_contacts", default_value="false"),
         DeclareLaunchArgument("rviz", default_value="true"),
         DeclareLaunchArgument(
             "rviz_gl",
@@ -80,6 +86,7 @@ def generate_launch_description() -> LaunchDescription:
                     "gui": gui,
                     "arm_kp": arm_kp,
                     "arm_kd": arm_kd,
+                    "publish_contacts": publish_contacts,
                 }
             ],
         ),

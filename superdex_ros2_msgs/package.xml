@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>superdex_ros2_msgs</name>
+  <version>0.1.0</version>
+  <description>
+    Message definitions for SuperDex state that has no standard ROS equivalent.
+    Currently just contacts. This is a separate package from superdex_ros2 out of
+    necessity, not taste: superdex_ros2 is ament_python, and an ament_python
+    package cannot run rosidl, so it cannot generate messages. Interface packages
+    are conventionally split out anyway -- a consumer that only needs to subscribe
+    then depends on the messages without pulling in the simulator or its pip
+    dependencies.
+  </description>
+  <maintainer email="giri.socialmedia@gmail.com">Team 6</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

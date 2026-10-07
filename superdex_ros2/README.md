@@ -13,32 +13,41 @@ driving a 27-DOF FR3 arm with a DG5F dexterous hand without modification; and a
 policy node that reads `/joint_states` and writes `/joint_command`, which is the
 same loop a learned policy runs against real hardware.
 
+**In a hurry?** [QUICKSTART.md](QUICKSTART.md) is the commands with no prose.
+
 ## Workspace layout
 
-The package lives inside the SuperDex fork so it stays committable; the colcon
+The packages live inside the SuperDex fork so they stay committable; the colcon
 workspace lives outside it, so build artifacts never touch the repo and colcon
 crawls only `src/` instead of the whole SuperDex tree.
 
 ```
 16-709/project/
 ├── project_superdex/                 <- fork (git)
-│   └── superdex_ros2/                <- this package
-│       ├── superdex_ros2/sim_node.py <- the bridge
-│       ├── superdex_ros2/trial_runner.py  <- waypoint trials
-│       ├── superdex_ros2/example_policy.py <- stand-in policy node
-│       ├── tools/bot_to_urdf.py      <- .superdex_bot -> URDF converter
-│       ├── tools/analyze_trials.py   <- offline metrics from a recorded session
-│       ├── launch/                   <- sim.launch.py, display.launch.py
-│       ├── urdf/  meshes/            <- generated, committed
-│       └── package.xml  setup.py
+│   ├── superdex_ros2/                <- the node (ament_python)
+│   │   ├── superdex_ros2/sim_node.py <- the bridge
+│   │   ├── superdex_ros2/trial_runner.py  <- waypoint trials
+│   │   ├── superdex_ros2/example_policy.py <- stand-in policy node
+│   │   ├── tools/bot_to_urdf.py      <- .superdex_bot -> URDF converter
+│   │   ├── tools/analyze_trials.py   <- offline metrics from a recorded session
+│   │   ├── launch/                   <- sim.launch.py, display.launch.py
+│   │   ├── urdf/  meshes/            <- generated, committed
+│   │   └── package.xml  setup.py
+│   └── superdex_ros2_msgs/           <- the messages (ament_cmake)
+│       ├── msg/ContactPoint.msg  msg/ContactArray.msg
+│       └── package.xml  CMakeLists.txt
 └── ros2_ws/                          <- workspace (not under git)
     ├── .venv-ros/
-    ├── src/superdex_ros2 -> ../../project_superdex/superdex_ros2
+    ├── src/superdex_ros2      -> ../../project_superdex/superdex_ros2
+    ├── src/superdex_ros2_msgs -> ../../project_superdex/superdex_ros2_msgs
     ├── build/  install/  log/
 ```
 
-Symlinking the package into `src/` is a normal ROS practice and keeps one copy
+Symlinking the packages into `src/` is a normal ROS practice and keeps one copy
 of the source under version control.
+
+Two packages rather than one because message generation forces it: `ament_python`
+cannot run `rosidl`. See [contacts](#contacts-the-one-custom-message).
 
 ## The interpreter problem — read this first
 
@@ -461,6 +470,11 @@ Notes on the setup:
 | `/target_pose` | `geometry_msgs/PoseStamped` | in | — |
 | `/cmd_vel` | `geometry_msgs/Twist` | in | — |
 | `/joint_command` | `sensor_msgs/JointState` | in | — |
+| `/contacts` | `superdex_ros2_msgs/ContactArray` | out | `contact_rate` (28.6 Hz), off by default |
+
+Every type here is a standard ROS type except `/contacts`, which is the one
+piece of SuperDex's state that has no standard equivalent — see
+[contacts](#contacts-the-one-custom-message) below.
 
 `/joint_states` carries position, velocity and commanded effort for all 27 DOFs.
 `/tf` broadcasts all 38 link frames as direct children of `world`, prefixed
@@ -500,6 +514,8 @@ rqt_plot /ee_target/pose/position/x /ee_pose/pose/position/x
 | `tf_rate` | `50.0` | `/tf` rate [Hz]. 38 frames at 200 Hz is 7600 msg/s for no benefit. |
 | `tf_prefix` | `sim_` | Prefix for broadcast frame names. |
 | `debug_links` | `false` | Print the link and DOF tables once at startup. |
+| `publish_contacts` | `false` | Publish `/contacts`. Needs `superdex_ros2_msgs` built. |
+| `contact_rate` | `30.0` | `/contacts` rate [Hz], quantized to 200/n — see below. |
 | `arm_kp` | `150.0` | Arm joint-space position gain [N·m/rad]. Joint mode only. |
 | `arm_kd` | `15.0` | Arm joint-space damping gain [N·m·s/rad]. Joint mode only. |
 | `arm_saturation` | `80.0` | Arm per-joint torque clamp [N·m]. Joint mode only. |
@@ -584,6 +600,146 @@ joint-command topic changes nothing about the node.
 
 Parameters: `decimation` (default 4), `amplitude` (0.25 rad), `period` (6.0 s),
 `joints` (which joints to move; everything else is commanded to hold).
+
+## Contacts: the one custom message
+
+Everything else on this interface is a standard ROS type, which is what lets
+stock tooling consume it. Contacts are the exception, and they are worth
+describing because the exception is instructive.
+
+SuperDex is a *contact-first* engine: the thing it does better than its
+alternatives is resolve rich contact between deformable surfaces. It reports, per
+step, a set of contact points — each with a position on both bodies, a normal, a
+force, a signed separation distance, and a quadrature weight giving the surface
+area that point stands for. That last field is the one with no analogue in a
+point-contact engine, and it is what you integrate over to get pressure or
+contact area.
+
+ROS has no message for that. The near misses:
+
+| Candidate | What it loses |
+|---|---|
+| `geometry_msgs/WrenchStamped` | Collapses the whole manifold to one resultant — exactly the information a contact-first engine exists to produce. |
+| `sensor_msgs/PointCloud2` | Keeps the geometry, drops force and area, and buries the field layout in a runtime-described struct. |
+| `visualization_msgs/MarkerArray` | Renders in RViz for free, but a marker array is a *drawing*. Subscribing to it to recover numbers is reading pixels. |
+
+So we define one. `superdex_ros2_msgs/ContactArray` is a stamped batch of
+`ContactPoint`, one message per published step, carrying all seven quantities the
+engine reports.
+
+### Why it is a second package
+
+**An `ament_python` package cannot generate messages.** Message generation runs
+through `rosidl`, which is driven from CMake; `ament_python` has no CMake step.
+This is not a policy we could argue with — there is no way to put a `.msg` file
+in `superdex_ros2` and have it build.
+
+So `superdex_ros2_msgs` is a separate `ament_cmake` package next to it. That
+split is the ROS convention for interfaces anyway, for a better reason than ours:
+a node that only wants to *subscribe* to contacts can depend on the messages
+without pulling in the simulator, the `superdex` pip wheel, or the venv
+gymnastics in [the interpreter problem](#the-interpreter-problem--read-this-first).
+
+```
+src/
+├── superdex_ros2        -> ament_python, the node
+└── superdex_ros2_msgs   -> ament_cmake,  the messages
+```
+
+```bash
+.venv-ros/bin/python -m colcon build --symlink-install
+source install/setup.bash     # required before the new messages are importable
+```
+
+`colcon` orders them correctly on its own: `superdex_ros2` has no build
+dependency on the messages, because the import is optional.
+
+### Why the import is optional
+
+```python
+try:
+    from superdex_ros2_msgs.msg import ContactArray
+    HAVE_CONTACT_MSGS = True
+except ImportError:
+    HAVE_CONTACT_MSGS = False
+```
+
+A workspace that built only `superdex_ros2` — which is every workspace that
+existed before this was added — still runs the node unchanged. Requesting
+contacts there logs a warning naming the build command and continues without
+them. A missing optional message package should not take a simulator down.
+
+### Running it
+
+```bash
+ros2 launch superdex_ros2 display.launch.py publish_contacts:=true
+ros2 topic echo /contacts --once
+```
+
+Off by default, for two independent reasons. The `CONTACT_POINTS` query makes the
+engine do work on every step, so leaving it on would quietly change every
+throughput number in [measured performance](#measured-performance) — all of which
+were taken with it off. And RViz has no display for this type, so nothing is
+watching unless you arranged for something to be.
+
+**Expect `/contacts` to be empty in the stock scene.** The only other body is the
+ground plane, and the arm does not reach it. Contacts appear when the hand closes
+on something, which means adding an object to the scene — not done here.
+Publishing an empty array every step is the honest behaviour and is what you
+will see.
+
+### Implementation notes
+
+Three things about the engine side are worth knowing before touching this code.
+
+**The query has to be registered before the step that produces the data.**
+`CONTACT_POINTS` explicitly does not support `register_query_and_compute`, so
+there is no asking after the fact — the data only exists for a step taken with
+the query already live. The node registers once at startup and cancels at
+teardown.
+
+**Register on the links, not on the articulation.** This is the one that cost
+real time. Contact sample points belong to whichever actor owns a collidable
+surface, and for an articulated actor that depends on how the robot is built:
+
+| Robot | Surface lives on | Register on |
+|---|---|---|
+| Skinned articulation | one skin covering the articulation actor | the articulation |
+| Rigid-link bot (the arm-hand combos) | each link's own mesh | each link actor |
+
+The arm-hand combos are the second kind. Registering on the articulated actor —
+which is what the engine's own skinned-pendulum example does, and which is the
+natural first guess — fails as `is_query_supported() == False`, not as an error.
+The node probes the articulation, falls back to the nested link actors, and logs
+which topology it found, so a bot built the other way works without a code
+change.
+
+**A contact between two queried links appears twice.** The pair is symmetric; the
+engine does not designate one body as canonical, and which one lands in `link_a`
+depends on the direction of the contact test. Two fingers touching each other are
+reported from both sides, with `a` and `b` swapped. We publish both rather than
+guess: `sample_index` is relative to `actor_a`, so there is no stable key to
+deduplicate on. Filter on `link_a < link_b` if you want each pair once.
+Hand-object contact is unaffected, since the object is not a queried actor.
+
+**Handles are not names.** The engine identifies the two bodies by `ActorHandle`,
+a raw 64-bit id that means nothing outside the process that issued it and that
+can be recycled after an actor is destroyed. The node resolves each to the bare
+link name, memoized on first lookup. Those are the same names used in the URDF
+and in the `/tf` frame ids, so a subscriber can look a contact's body up in tf2
+and get its pose without asking us anything.
+
+**This publisher allocates, and the others do not.** Every other message in the
+loop is built once and refilled, because its size is fixed. The contact count
+changes every step, so there is nothing to reuse. That, plus the per-point
+nesting, is why the default rate is 30 Hz and not 200.
+
+**Rates are quantized to 200/n.** Both `contact_rate` and `tf_rate` decimate an
+integer number of simulation steps, so the achievable rates are 200 Hz divided by
+a whole number: 200, 100, 66.7, 50, 40, 33.3, 28.6, 25. Asking for 30 Hz gets you
+`round(200/30) = 7` and therefore 28.6 Hz, which is what `ros2 topic hz` reports.
+Nothing is wrong when it reads 28.6. `tf_rate:=50.0` happens to land exactly
+(200/4), which is why this is easy to miss.
 
 ## Teleop
 

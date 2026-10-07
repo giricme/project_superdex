@@ -115,6 +115,25 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
 from tf2_ros import TransformBroadcaster
 
+# The only non-standard messages on this interface, and they live in a separate
+# package because they have to: superdex_ros2 is ament_python, and ament_python
+# cannot run rosidl. See superdex_ros2_msgs/.
+#
+# The import is optional on purpose. A workspace that built only superdex_ros2
+# -- which is every workspace that existed before this was added -- still runs
+# this node unchanged; contact publishing reports that it is unavailable and
+# switches itself off. A missing optional message package should not take a
+# simulator down.
+try:
+    from superdex_ros2_msgs.msg import ContactArray
+    from superdex_ros2_msgs.msg import ContactPoint as ContactPointMsg
+
+    HAVE_CONTACT_MSGS = True
+except ImportError:  # pragma: no cover - depends on what the workspace built
+    ContactArray = None
+    ContactPointMsg = None
+    HAVE_CONTACT_MSGS = False
+
 # The build's `real` type. A pose handed to a controller Target is copied into the
 # Target's own storage, so matching the dtype here keeps that a straight copy rather
 # than an element-by-element conversion.
@@ -262,6 +281,17 @@ def main() -> None:
     node.declare_parameter("tf_rate", 50.0)
     node.declare_parameter("tf_prefix", "sim_")
     node.declare_parameter("debug_links", False)
+    # Contact publishing, off by default. Two reasons for the default, not one:
+    # the CONTACT_POINTS query makes the engine do work every step, so leaving it
+    # on would quietly change every throughput number we report; and it needs
+    # superdex_ros2_msgs built, which a workspace may not have. Turn it on with
+    # publish_contacts:=true when you want contacts, which is a deliberate act.
+    node.declare_parameter("publish_contacts", False)
+    # 30 Hz is a display rate, not a physics rate. Contacts are the heaviest
+    # thing on this interface -- a grasp is hundreds of points per step, each a
+    # nested message -- and nothing downstream consumes them at 200 Hz. Serializing
+    # all of them at full rate would cost more than simulating them.
+    node.declare_parameter("contact_rate", 30.0)
     # Joint-space gains for the ARM, used only in joint mode. The shipped
     # example tunes one set of gains for the fingers (kp 3.0), which a
     # seven-link arm will sag straight through. Gravity is disabled on every
@@ -282,6 +312,8 @@ def main() -> None:
     tf_rate = float(node.get_parameter("tf_rate").value)
     tf_prefix = str(node.get_parameter("tf_prefix").value)
     debug_links = bool(node.get_parameter("debug_links").value)
+    publish_contacts = bool(node.get_parameter("publish_contacts").value)
+    contact_rate = float(node.get_parameter("contact_rate").value)
     arm_kp = float(node.get_parameter("arm_kp").value)
     arm_kd = float(node.get_parameter("arm_kd").value)
     arm_saturation = float(node.get_parameter("arm_saturation").value)
@@ -633,6 +665,120 @@ def main() -> None:
         tf_msg.child_frame_id = name
         tf_msgs.append(tf_msg)
 
+    # --- /contacts -------------------------------------------------------------
+    # The engine reports contacts as pairs of ActorHandles. A handle is a raw
+    # 64-bit id that means nothing outside the process that issued it, and it can
+    # be recycled after an actor is destroyed, so publishing one would be worse
+    # than useless. We resolve to the bare link name instead, which is exactly
+    # the name used in the URDF and in the /tf frame ids -- a subscriber can look
+    # a contact's frame up in tf2 and get its pose without asking us anything.
+    #
+    # Keyed on handle.value (a plain int) rather than the handle: Handle defines
+    # __hash__, but an int key is one less assumption to be wrong about.
+    actor_name_by_handle: dict[int, str] = {}
+    for i in range(num_links):
+        raw = scene.get_actor(link_handles[i]).get_name()
+        actor_name_by_handle[link_handles[i].value] = raw.split("/")[-1]
+
+    def actor_display_name(handle) -> str:
+        """Bare link name for a bot link; the actor's own name for anything else.
+
+        The ground plane and any object added to the scene fall through to the
+        lookup, which is why this is a function and not just a dict access.
+        Results are memoized because the miss path costs a scene lookup and the
+        same handles recur every step.
+        """
+        name = actor_name_by_handle.get(handle.value)
+        if name is None:
+            actor = scene.get_actor(handle)
+            name = "" if actor is None else actor.get_name().split("/")[-1]
+            actor_name_by_handle[handle.value] = name
+        return name
+
+    # Registered, not computed on demand: CONTACT_POINTS explicitly does not
+    # support register_query_and_compute, so the data only exists for a step that
+    # was taken with the query already live. Registering has to happen before the
+    # first step, and every read has to happen after one.
+    #
+    # WHICH actor to register on is the part that is not obvious, and getting it
+    # wrong fails as an unsupported query rather than as an error. Contact sample
+    # points belong to whichever actor owns a collidable surface, and for an
+    # articulated actor that depends on how the robot is built:
+    #
+    #   skinned articulation  -> one skin surface on the articulation actor, so
+    #                            the articulation supports the query
+    #   rigid-link bot        -> no skin; each link is its own rigid sub-actor
+    #                            with its own mesh, so the LINKS support it and
+    #                            the articulation does not
+    #
+    # The arm-hand combos are the second kind. Rather than hard-code either, probe
+    # the articulation, fall back to the links, and log which topology was found.
+    # A bot built the other way then works without a code change.
+    contact_sources: list = []  # (Actor, QueryHandle) to read and to cancel
+    pub_contacts = None
+    contact_msg = None
+    contact_decim = max(1, int(round((1.0 / time_step) / max(contact_rate, 1e-6))))
+    if publish_contacts:
+        if not HAVE_CONTACT_MSGS:
+            node.get_logger().warn(
+                "publish_contacts:=true but superdex_ros2_msgs is not importable. "
+                "Build it and re-source:  colcon build --packages-select "
+                "superdex_ros2_msgs && source install/setup.bash. "
+                "Running without contacts."
+            )
+        else:
+            if bot_actor.is_query_supported(sdp.QueryType.CONTACT_POINTS):
+                candidates = [("articulation", bot_actor)]
+            else:
+                candidates = [
+                    (link_frame_names[i], scene.get_actor(link_handles[i]))
+                    for i in range(num_links)
+                ]
+            # Actor references are held for the life of the run rather than looked
+            # up per publish. They stay valid as long as the scene does, which the
+            # shipped examples rely on too.
+            skipped = []
+            for label, actor in candidates:
+                if actor is None:
+                    continue
+                if actor.is_query_supported(sdp.QueryType.CONTACT_POINTS):
+                    contact_sources.append(
+                        (actor, actor.register_query(sdp.QueryType.CONTACT_POINTS))
+                    )
+                else:
+                    skipped.append(label)
+
+            if not contact_sources:
+                # Documented not to be supported for actors without contact sample
+                # points or with far SDF evaluation enabled. Neither the
+                # articulation nor any link qualified, which is a scene or asset
+                # configuration matter and not something this node can fix.
+                node.get_logger().warn(
+                    "no actor in this bot supports the CONTACT_POINTS query "
+                    "(neither the articulation nor any of its "
+                    f"{num_links} links); running without contacts"
+                )
+            else:
+                pub_contacts = node.create_publisher(ContactArray, "contacts", 10)
+                contact_msg = ContactArray()
+                contact_msg.header.frame_id = "world"
+                where = (
+                    "the articulation"
+                    if len(contact_sources) == 1 and contact_sources[0][0] is bot_actor
+                    else f"{len(contact_sources)} of {num_links} link actors"
+                )
+                node.get_logger().info(
+                    f"publishing contacts on /contacts at "
+                    f"{(1.0 / time_step) / contact_decim:.0f} Hz "
+                    f"(superdex_ros2_msgs/ContactArray, world frame), "
+                    f"queried from {where}"
+                )
+                if skipped:
+                    node.get_logger().info(
+                        f"links without contact samples, not queried: "
+                        f"{', '.join(skipped)}"
+                    )
+
     node.get_logger().info(
         f"publishing {num_dofs} DOFs on /joint_states at {1.0 / time_step:.0f} Hz "
         f"(sim time; set use_sim_time:=true downstream)"
@@ -891,6 +1037,50 @@ def main() -> None:
                     tf_msg.transform.rotation.w = float(q[3])
                 tf_broadcaster.sendTransform(tf_msgs)
 
+            if contact_sources and n_steps % contact_decim == 0:
+                # Unlike every other publisher in this loop, this one allocates.
+                # The others reuse a message because their size is fixed; the
+                # contact count changes every step, so there is nothing to reuse.
+                # .tolist() materializes the span into Python ContactPoint
+                # objects -- a copy, but the only access pattern the engine's own
+                # tests exercise, and the span is invalidated by the next step.
+                #
+                # Reading per source means a contact between two REGISTERED links
+                # is reported twice, once from each side, with a and b swapped.
+                # We publish both rather than guess which is canonical: the pair
+                # is genuinely symmetric, and the engine's sample_index is
+                # relative to actor_a, so there is no stable key to dedupe on.
+                # A consumer wanting unique pairs filters on link_a < link_b;
+                # this is stated in ContactPoint.msg and in the README.
+                points = []
+                for actor, _q in contact_sources:
+                    for cp in actor.get_contact_points_world().tolist():
+                        m = ContactPointMsg()
+                        m.link_a = actor_display_name(cp.actor_a)
+                        m.link_b = actor_display_name(cp.actor_b)
+                        pa = cp.pos_a
+                        m.position_a.x = float(pa[0])
+                        m.position_a.y = float(pa[1])
+                        m.position_a.z = float(pa[2])
+                        pb = cp.pos_b
+                        m.position_b.x = float(pb[0])
+                        m.position_b.y = float(pb[1])
+                        m.position_b.z = float(pb[2])
+                        nrm = cp.normal
+                        m.normal.x = float(nrm[0])
+                        m.normal.y = float(nrm[1])
+                        m.normal.z = float(nrm[2])
+                        f = cp.force
+                        m.force.x = float(f[0])
+                        m.force.y = float(f[1])
+                        m.force.z = float(f[2])
+                        m.distance = float(cp.distance)
+                        m.patch_area = float(cp.int_weight)
+                        points.append(m)
+                contact_msg.header.stamp = stamp
+                contact_msg.points = points
+                pub_contacts.publish(contact_msg)
+
             if realtime:
                 # Absolute schedule, not incremental sleeps: each sleep
                 # overshoots slightly, and incremental sleeps accumulate that
@@ -927,6 +1117,10 @@ def main() -> None:
     if rclpy.ok():
         node.destroy_node()
         rclpy.shutdown()
+    # Queries are reference counted, so cancelling before the actors go away is
+    # the symmetric thing to do even though destroy_bot would take them with it.
+    for _actor, _query in contact_sources:
+        _actor.cancel_query(_query)
     sdr.destroy_bot(scene, bot)
     sdp.shutdown()
     print("Simulation complete.")
